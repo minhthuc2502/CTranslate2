@@ -100,6 +100,7 @@ class TransformerDecoderSpec(model_spec.LayerSpec):
         shared_layer_norm: bool = False,
         multi_query_attention: bool = False,
         num_heads_kv: Optional[int] = None,
+        sliding_window: Optional[int] = None,
     ):
         """Initializes a Transformer decoder specification.
 
@@ -138,6 +139,7 @@ class TransformerDecoderSpec(model_spec.LayerSpec):
             attention layer norms.
           multi_query_attention: Use multi-query attention (alias for num_heads_kv=1).
           num_heads_kv: Number of attention heads for the key and value.
+          sliding_window: size of window to slide the input sequence
         """
         if parallel_residual:
             if not pre_norm:
@@ -169,6 +171,8 @@ class TransformerDecoderSpec(model_spec.LayerSpec):
         self.alibi = alibi
         self.alibi_use_positive_positions = alibi_use_positive_positions
         self.scale_alibi = scale_alibi
+        if sliding_window is not None:
+            self.sliding_window = sliding_window
         if (
             not relative_position
             and not relative_attention_bias
@@ -196,6 +200,7 @@ class TransformerDecoderSpec(model_spec.LayerSpec):
                 parallel_residual=parallel_residual,
                 shared_layer_norm=shared_layer_norm,
                 num_heads_kv=num_heads_kv,
+                sliding_window=sliding_window,
             )
             for _ in range(num_layers)
         ]
@@ -241,6 +246,7 @@ class TransformerDecoderLayerSpec(model_spec.LayerSpec):
         parallel_residual=False,
         shared_layer_norm=False,
         num_heads_kv=None,
+        sliding_window=None,
     ):
         self.self_attention = attention_spec.MultiHeadAttentionSpec(
             self_attention=True,
@@ -253,6 +259,7 @@ class TransformerDecoderLayerSpec(model_spec.LayerSpec):
             rotary_scaling_factor=rotary_scaling_factor,
             rotary_base=rotary_base,
             num_heads_kv=num_heads_kv,
+            sliding_window=sliding_window,
         )
 
         if with_encoder_attention:
@@ -479,6 +486,7 @@ class TransformerDecoderModelSpec(model_spec.LanguageModelSpec):
         shared_layer_norm: bool = False,
         multi_query_attention: bool = False,
         num_heads_kv: Optional[int] = None,
+        sliding_window: Optional[int] = None,
     ):
         """Creates a Transformer decoder model specification.
 
@@ -511,6 +519,7 @@ class TransformerDecoderModelSpec(model_spec.LanguageModelSpec):
             attention layer norms.
           multi_query_attention: Use multi-query attention (alias for num_heads_kv=1).
           num_heads_kv: Number of attention heads for the key and value.
+          sliding_window: The window side
         """
         decoder = TransformerDecoderSpec(
             num_layers,
@@ -536,6 +545,7 @@ class TransformerDecoderModelSpec(model_spec.LanguageModelSpec):
             shared_layer_norm=shared_layer_norm,
             multi_query_attention=multi_query_attention,
             num_heads_kv=num_heads_kv,
+            sliding_window=sliding_window,
         )
 
         return cls(decoder)

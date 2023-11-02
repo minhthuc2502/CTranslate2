@@ -1335,6 +1335,7 @@ class MistralLoader(ModelLoader):
             rotary_scaling_factor=rotary_scaling_factor,
             rotary_base=getattr(model.config, "rope_theta", 10000),
             num_heads_kv=num_heads_kv,
+            sliding_window=getattr(model.config, "sliding_window", 0),
         )
 
         self.set_decoder(spec.decoder, model.model)

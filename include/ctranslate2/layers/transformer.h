@@ -209,6 +209,7 @@ namespace ctranslate2 {
       std::vector<std::vector<dim_t>> _alignment_heads;
       bool _average_alignment_heads;
       Dense _proj;
+      dim_t _sliding_window;
     };
 
   }

@@ -400,6 +400,7 @@ namespace ctranslate2 {
                                   && !_relative_position_keys
                                   && !_relative_position_values)
       , _cache_time_dim(_merge_time_and_head_dims ? 1 : 2)
+      , _sliding_window(model.get_attribute_with_default<int>(scope + "/sliding_window", 0))
     {
       if (_relative_position_keys)
         _maximum_relative_position = (_relative_position_keys->dim(0) - 1) / 2;
@@ -436,6 +437,7 @@ namespace ctranslate2 {
       StorageView queries_proj(dtype, device);
       StorageView keys_proj(dtype, device);
       StorageView values_proj(dtype, device);
+      StorageView current_values_lengths(dtype, device);
 
       const StorageView* q = &queries;
       if (_layer_norm && _pre_norm) {
@@ -534,6 +536,12 @@ namespace ctranslate2 {
             concat_op({&tmp, &keys_proj}, *cached_keys);
             tmp = std::move(*cached_values);
             concat_op({&tmp, &values_proj}, *cached_values);
+
+            if (_sliding_window > 0 && cached_keys->shape()[2] > _sliding_window) {
+              const ops::Slide slide_op(2, cached_keys->shape()[2] - _sliding_window, _sliding_window);
+              slide_op(*cached_keys, *cached_keys);
+              slide_op(*cached_values, *cached_values);
+            }
           }
         }
       }
