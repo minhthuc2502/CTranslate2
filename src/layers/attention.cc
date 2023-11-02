@@ -437,7 +437,14 @@ namespace ctranslate2 {
       StorageView queries_proj(dtype, device);
       StorageView keys_proj(dtype, device);
       StorageView values_proj(dtype, device);
-      StorageView current_values_lengths(dtype, device);
+      StorageView tmp_values_lengths;
+      if (values_lengths)
+      {
+        StorageView tmp(values_lengths->dtype(), values_lengths->device());
+        tmp_values_lengths = std::move(tmp);
+      }
+
+      const StorageView* current_values_lengths = nullptr;
 
       const StorageView* q = &queries;
       if (_layer_norm && _pre_norm) {
@@ -541,10 +548,19 @@ namespace ctranslate2 {
               const ops::Slide slide_op(2, cached_keys->shape()[2] - _sliding_window, _sliding_window);
               slide_op(*cached_keys, *cached_keys);
               slide_op(*cached_values, *cached_values);
+              if (values_lengths && queries_proj.dim(2) < _sliding_window) {
+                const ops::Slide slide_lengths_op(2, 0, queries_proj.dim(2));
+                slide_lengths_op(*values_lengths, tmp_values_lengths);
+                current_values_lengths = &tmp_values_lengths;
+              }
             }
           }
         }
       }
+      if (!current_values_lengths) {
+        current_values_lengths = values_lengths;
+      }
+
 
       if (cached_keys) {
         keys_proj.shallow_copy(*cached_keys);
@@ -555,7 +571,7 @@ namespace ctranslate2 {
       dot_product_attention(queries_proj,
                             keys_proj,
                             values_proj,
-                            values_lengths,
+                            current_values_lengths,
                             _relative_position_keys,
                             _relative_position_values,
                             _relative_attention_bias,

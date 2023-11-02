@@ -556,30 +556,9 @@ namespace ctranslate2 {
           layer_ins.push_back(std::move(tmp));
         }
       }
-      if (layer_ins.size() > 1) {
-        dim_t last_prompt_size = (layer_ins[layer_ins.size() - 1].dim(1) % _sliding_window) == 0 ?
-                                  _sliding_window : layer_ins[layer_ins.size() - 1].dim(1) % _sliding_window;
-        if (is_sequence && !lengths) {
-          input_lengths = std::make_unique<StorageView>(Shape{ids.dim(0)}, int32_t(last_prompt_size), device);
-          lengths = input_lengths.get();
-        }
 
-        const bool multi_query = _layers.front()->get_self_attention().multi_query();
-
-        StorageView lengths_mask = layers::MultiHeadAttention::prepare_length_mask(
-          *lengths,
-          _num_heads,
-          last_prompt_size,
-          /*mask_future=*/true,
-          multi_query);
-
-        rest_input_lengths_mask = std::make_unique<StorageView>(std::move(lengths_mask));
-      }
       for (size_t p = 0; p < layer_ins.size(); ++p) {
         StorageView prompt = std::move(layer_ins[p]);
-        if (p > 0 && p == (layer_ins.size() - 1)) {
-            input_lengths_mask = std::move(rest_input_lengths_mask);
-        }
         for (size_t l = 0; l < _layers.size(); ++l) {
           StorageView* cached_self_attn_keys = nullptr;
           StorageView* cached_self_attn_values = nullptr;

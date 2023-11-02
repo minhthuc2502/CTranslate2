@@ -75,7 +75,8 @@ namespace ctranslate2 {
     template <Device D, typename T>
     void Slide::compute(const StorageView& input, StorageView& output, const dim_t& index) const {
       const dim_t axis = _axis < 0 ? input.rank() + _axis : _axis;
-      const dim_t step_size = input.dim(axis) * input.stride(axis);
+      const dim_t stride_axis = input.stride(axis) == 0 ? 1 : input.stride(axis);
+      const dim_t step_size = input.dim(axis) * stride_axis;
       const T* input_data = input.data<T>();
 
       StorageView& x = output;
@@ -88,7 +89,7 @@ namespace ctranslate2 {
       const dim_t iter_size = compute_iter_size(x, axis);
 
       const dim_t grain_size = cpu::get_minimum_batch_copies_per_thread<T>(copy_size);
-      input_data += index * input.stride(axis);  // Read next with an offset.
+      input_data += index * stride_axis;  // Read next with an offset.
       cpu::parallel_for(0, iter_size, grain_size, [&](dim_t begin, dim_t end) {
         for (dim_t i = begin; i < end; ++i)
           primitives<D>::copy(input_data + i * step_size, x_data + i * copy_size, copy_size);
