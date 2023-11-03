@@ -168,7 +168,7 @@ namespace ctranslate2 {
     void Slide::compute(const StorageView& input, StorageView& output, const dim_t& index) const {
       const dim_t axis = _axis < 0 ? input.rank() + _axis : _axis;
       const dim_t input_dim = input.dim(axis);
-      const dim_t inner_size = input.stride(axis) == 0 ? 1 : input.stride(axis);
+      const dim_t inner_size = (input.stride(axis) == 0 ? 1 : input.stride(axis));
       const dim_t inner_bytes = inner_size * sizeof (T);
       const T* input_data = input.data<T>();
 
