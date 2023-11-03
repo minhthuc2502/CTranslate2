@@ -438,12 +438,6 @@ namespace ctranslate2 {
       StorageView keys_proj(dtype, device);
       StorageView values_proj(dtype, device);
       StorageView tmp_values_lengths;
-      if (values_lengths)
-      {
-        StorageView tmp(values_lengths->dtype(), values_lengths->device());
-        tmp_values_lengths = std::move(tmp);
-      }
-
       const StorageView* current_values_lengths = nullptr;
 
       const StorageView* q = &queries;
@@ -549,6 +543,8 @@ namespace ctranslate2 {
               slide_op(*cached_keys, *cached_keys);
               slide_op(*cached_values, *cached_values);
               if (values_lengths && queries_proj.dim(2) < _sliding_window) {
+                StorageView tmp_init(values_lengths->dtype(), values_lengths->device());
+                tmp_values_lengths = std::move(tmp_init);
                 const ops::Slide slide_lengths_op(2, 0, queries_proj.dim(2));
                 slide_lengths_op(*values_lengths, tmp_values_lengths);
                 current_values_lengths = &tmp_values_lengths;
