@@ -557,7 +557,7 @@ namespace ctranslate2 {
         }
       }
 
-      for (auto& prompt : layer_ins) {
+      for (auto& layer_in_chunk : layer_ins) {
         for (size_t l = 0; l < _layers.size(); ++l) {
           StorageView* cached_self_attn_keys = nullptr;
           StorageView* cached_self_attn_values = nullptr;
@@ -579,7 +579,7 @@ namespace ctranslate2 {
           if (attention && heads_to_select)
             layer_attention = std::make_unique<StorageView>(dtype, device);
 
-          (*_layers[l])(prompt,
+          (*_layers[l])(layer_in_chunk,
                         input_lengths_mask.get(),
                         memory,
                         memory_lengths_mask.get(),
@@ -593,14 +593,14 @@ namespace ctranslate2 {
                         memory_padder.get(),
                         return_normalized_attention(),
                         &position_bias);
-          prompt = std::move(layer_out);
+          layer_in_chunk = std::move(layer_out);
 
           if (layer_attention) {
             alignment_heads.emplace_back(dtype, device);
             ops::Gather(1, 1)(*layer_attention, *heads_to_select, alignment_heads.back());
           }
         }
-        layer_in = std::move(prompt);
+        layer_in = std::move(layer_in_chunk);
       }
 
       if (step == 0) {
