@@ -172,7 +172,7 @@ class TransformerDecoderSpec(model_spec.LayerSpec):
         self.alibi_use_positive_positions = alibi_use_positive_positions
         self.scale_alibi = scale_alibi
         if sliding_window is not None:
-            self.sliding_window = sliding_window
+            self.sliding_window = np.dtype("int32").type(sliding_window)
         if (
             not relative_position
             and not relative_attention_bias

@@ -331,7 +331,7 @@ namespace ctranslate2 {
                           : build_position_encoder(model, scope + "/position_encodings", _embeddings))
       , _with_encoder_attention(_layers.front()->has_cross_attention())
       , _proj(model, scope + "/projection")
-      , _sliding_window(model.get_attribute_with_default<int>(scope + "/sliding_window", 0)) {
+      , _sliding_window(model.get_attribute_with_default<int32_t>(scope + "/sliding_window", 0)) {
 
       dim_t alignment_layer = (
         model.get_attribute_with_default<int32_t>(scope + "/alignment_layer", -1));

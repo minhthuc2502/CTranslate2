@@ -400,7 +400,7 @@ namespace ctranslate2 {
                                   && !_relative_position_keys
                                   && !_relative_position_values)
       , _cache_time_dim(_merge_time_and_head_dims ? 1 : 2)
-      , _sliding_window(model.get_attribute_with_default<int>(scope + "/sliding_window", 0))
+      , _sliding_window(model.get_attribute_with_default<int32_t>(scope + "/sliding_window", 0))
     {
       if (_relative_position_keys)
         _maximum_relative_position = (_relative_position_keys->dim(0) - 1) / 2;
