@@ -557,8 +557,7 @@ namespace ctranslate2 {
         }
       }
 
-      for (size_t p = 0; p < layer_ins.size(); ++p) {
-        StorageView prompt = std::move(layer_ins[p]);
+      for (auto& prompt : layer_ins) {
         for (size_t l = 0; l < _layers.size(); ++l) {
           StorageView* cached_self_attn_keys = nullptr;
           StorageView* cached_self_attn_values = nullptr;
