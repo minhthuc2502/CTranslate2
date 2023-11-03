@@ -1322,7 +1322,9 @@ class MistralLoader(ModelLoader):
             rotary_scaling_type = None
             rotary_scaling_factor = 1
 
-        rotary_num_initial_positions = getattr(model.config, "max_position_embeddings", None)
+        rotary_num_initial_positions = getattr(
+            model.config, "max_position_embeddings", None
+        )
 
         spec = transformer_spec.TransformerDecoderModelSpec.from_config(
             num_layers,

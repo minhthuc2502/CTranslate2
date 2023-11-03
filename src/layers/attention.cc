@@ -355,7 +355,7 @@ namespace ctranslate2 {
       const bool interleave = model.get_flag_with_default(scope + "/rotary_interleave", true);
       const float base = model.get_attribute_with_default<float>(scope + "/rotary_base", 10000.f);
       const float num_initial_positions =
-        model.get_attribute_with_default<int>(scope + "/rotary_num_initial_positions", 2048);
+        model.get_attribute_with_default<int32_t>(scope + "/rotary_num_initial_positions", 2048);
 
       const auto scaling_type = model.get_enum_value<RotaryScalingType>(
         scope + "/rotary_scaling_type", -1);
