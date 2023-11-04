@@ -453,6 +453,8 @@ namespace ctranslate2 {
 
       dim_t beam_size = 1;
 
+      bool computing_chunking_input = (_sliding_window > 0 && values_lengths);
+
       if (!_self_attention) {
         queries_proj = std::move(fused_proj);
 
@@ -541,21 +543,24 @@ namespace ctranslate2 {
             tmp = std::move(*cached_values);
             concat_op({&tmp, &values_proj}, *cached_values);
 
-            if (_sliding_window > 0 && cached_keys->shape()[2] > _sliding_window) {
+            if (!computing_chunking_input && cached_keys->shape()[2] > _sliding_window) {
+              // only for generation
               const ops::Slide slide_op(2, cached_keys->shape()[2] - _sliding_window, _sliding_window);
               slide_op(*cached_keys, *cached_keys);
               slide_op(*cached_values, *cached_values);
-              if (values_lengths && queries_proj.dim(2) < _sliding_window) {
-                StorageView tmp_init(values_lengths->dtype(), values_lengths->device());
-                tmp_values_lengths = std::move(tmp_init);
-                const ops::Slide slide_lengths_op(2, 0, queries_proj.dim(2));
-                slide_lengths_op(*values_lengths, tmp_values_lengths);
-                current_values_lengths = &tmp_values_lengths;
-              }
             }
           }
         }
       }
+
+      if (computing_chunking_input && queries_proj.dim(2) < _sliding_window) {
+        StorageView tmp_init(values_lengths->dtype(), values_lengths->device());
+        tmp_values_lengths = std::move(tmp_init);
+        const ops::Slide slide_lengths_op(2, 0, queries_proj.dim(2));
+        slide_lengths_op(*values_lengths, tmp_values_lengths);
+        current_values_lengths = &tmp_values_lengths;
+      }
+
       if (!current_values_lengths) {
         current_values_lengths = values_lengths;
       }
@@ -584,6 +589,13 @@ namespace ctranslate2 {
                             beam_size,
                             _alibi,
                             position_bias);
+
+      if (computing_chunking_input && cached_keys->shape()[2] > _sliding_window) {
+        // set only last sliding_window tokens to cached_keys and cached_values after computing attention
+        const ops::Slide slide_op(2, cached_keys->shape()[2] - _sliding_window, _sliding_window);
+        slide_op(*cached_keys, *cached_keys);
+        slide_op(*cached_values, *cached_values);
+      }
 
       if (_merge_time_and_head_dims) {
         context.reshape(queries.shape());
