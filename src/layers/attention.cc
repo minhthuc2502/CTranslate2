@@ -545,9 +545,12 @@ namespace ctranslate2 {
 
             if (!computing_chunking_input && cached_keys->shape()[2] > _sliding_window) {
               // only for generation
+              StorageView tmp2(dtype, device);
               const ops::Slide slide_op(2, cached_keys->shape()[2] - _sliding_window, _sliding_window);
-              slide_op(*cached_keys, *cached_keys);
-              slide_op(*cached_values, *cached_values);
+              slide_op(*cached_keys, tmp2);
+              *cached_keys = std::move(tmp2);
+              slide_op(*cached_values, tmp2);
+              *cached_values = std::move(tmp2);
             }
           }
         }

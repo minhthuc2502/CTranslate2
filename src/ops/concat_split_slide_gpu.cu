@@ -176,7 +176,8 @@ namespace ctranslate2 {
       const dim_t output_size = output.size();
       const dim_t output_bytes = output_size * sizeof (T);
       if (axis == 0) {
-        primitives<D>::copy(input_data + index, output_data, output_size);
+        dim_t offset = index * output.stride(axis);
+        primitives<D>::copy(input_data + offset, output_data, output_size);
       }
       else {
         const dim_t output_dim = output.dim(axis);

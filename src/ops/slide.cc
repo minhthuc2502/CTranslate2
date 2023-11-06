@@ -19,7 +19,7 @@ namespace ctranslate2 {
       PROFILE("Slide");
       const dim_t axis = _axis < 0 ? input.rank() + _axis : _axis;
 
-      if (_index < 0 || _index + _size > input.dim(axis))
+      if (_index < 0 || _index >= input.dim(axis))
         throw std::invalid_argument("Index or Size given is not valid");
 
       dim_t offset = input.stride(0) * _index;
