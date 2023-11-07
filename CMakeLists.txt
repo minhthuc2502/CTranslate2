@@ -553,6 +553,8 @@ if (BUILD_CLI)
   add_subdirectory(cli)
 endif()
 
+add_subdirectory(test)
+
 install(
   TARGETS ${PROJECT_NAME} EXPORT ${PROJECT_NAME}Targets
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
