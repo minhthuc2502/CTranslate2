@@ -553,11 +553,21 @@ namespace ctranslate2 {
         }
       }
 
-      if (computing_chunking_input && queries_proj.dim(2) < _sliding_window) {
-        StorageView tmp_init(values_lengths->dtype(), values_lengths->device());
+      if (computing_chunking_input && cached_keys) {
+        auto max_time = _sliding_window + queries_proj.dim(2);
+        std::unique_ptr<const StorageView> input_lengths = std::make_unique<StorageView>(Shape{queries_proj.dim(0)}, int32_t(max_time), device);
+        const StorageView* lengths = input_lengths.get();
+        StorageView lengths_mask = layers::MultiHeadAttention::prepare_length_mask(
+          *lengths,
+          _num_heads,
+          max_time,
+          /*mask_future=*/true,
+          multi_query());
+
+        StorageView tmp_init(lengths_mask.dtype(), lengths_mask.device());
         tmp_values_lengths = std::move(tmp_init);
-        const ops::Slide slide_lengths_op(2, 0, queries_proj.dim(2));
-        slide_lengths_op(*values_lengths, tmp_values_lengths);
+        const ops::Slide slide_lengths_op(2, _sliding_window, queries_proj.dim(2));
+        slide_lengths_op(lengths_mask, tmp_values_lengths);
         current_values_lengths = &tmp_values_lengths;
       }
 
@@ -593,8 +603,11 @@ namespace ctranslate2 {
       if (computing_chunking_input && cached_keys->shape()[2] > _sliding_window) {
         // set only last sliding_window tokens to cached_keys and cached_values after computing attention
         const ops::Slide slide_op(2, cached_keys->shape()[2] - _sliding_window, _sliding_window);
-        slide_op(*cached_keys, *cached_keys);
-        slide_op(*cached_values, *cached_values);
+        StorageView tmp(dtype, device);
+        slide_op(*cached_keys, tmp);
+        *cached_keys = std::move(tmp);
+        slide_op(*cached_values, tmp);
+        *cached_values = std::move(tmp);
       }
 
       if (_merge_time_and_head_dims) {
