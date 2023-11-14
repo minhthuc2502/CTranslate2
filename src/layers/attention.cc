@@ -528,6 +528,24 @@ namespace ctranslate2 {
           }
         }
 
+        if (computing_chunking_input && cached_keys && !cached_keys->empty()) {
+          auto max_time = _sliding_window + queries_proj.dim(2);
+          std::unique_ptr<const StorageView> input_lengths = std::make_unique<StorageView>(Shape{queries_proj.dim(0)}, int32_t(max_time), device);
+          const StorageView* lengths = input_lengths.get();
+          StorageView lengths_mask = layers::MultiHeadAttention::prepare_length_mask(
+            *lengths,
+            _num_heads,
+            max_time,
+            /*mask_future=*/true,
+            multi_query());
+
+          StorageView tmp_init(lengths_mask.dtype(), lengths_mask.device());
+          tmp_values_lengths = std::move(tmp_init);
+          const ops::Slide slide_lengths_op(2, _sliding_window, queries_proj.dim(2));
+          slide_lengths_op(lengths_mask, tmp_values_lengths);
+          current_values_lengths = &tmp_values_lengths;
+        }
+
         if (cached_keys != nullptr) {
           if (cached_keys->empty()) {
             *cached_keys = std::move(keys_proj);
