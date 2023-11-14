@@ -432,7 +432,8 @@ namespace ctranslate2 {
                                         const Padder* queries_padder,
                                         const Padder* values_padder,
                                         bool return_normalized_attention,
-                                        StorageView* position_bias) const {
+                                        StorageView* position_bias,
+                                        dim_t step) const {
       PROFILE("MultiHeadAttention");
       const Device device = queries.device();
       const DataType dtype = queries.dtype();
@@ -513,17 +514,13 @@ namespace ctranslate2 {
         }
 
         if (_rotary_embeddings) {
-          const dim_t offset = (cached_keys && !cached_keys->empty()
-                                ? cached_keys->dim(_cache_time_dim)
-                                : 0);
-
           if (_merge_time_and_head_dims) {
             queries_proj.reshape({queries_proj.dim(0), -1, _d_model});
             split_heads(queries_proj, _num_heads);
           }
 
-          _rotary_embeddings->apply(queries_proj, offset);
-          _rotary_embeddings->apply(keys_proj, offset);
+          _rotary_embeddings->apply(queries_proj, step);
+          _rotary_embeddings->apply(keys_proj, step);
 
           if (_merge_time_and_head_dims) {
             combine_heads(queries_proj, _num_heads);

@@ -121,7 +121,8 @@ namespace ctranslate2 {
                                              const Padder* input_padder,
                                              const Padder* memory_padder,
                                              bool return_normalized_attention,
-                                             StorageView* position_bias) const {
+                                             StorageView* position_bias,
+                                             dim_t step) const {
       PROFILE("TransformerDecoderLayer");
 
       const DataType dtype = input.dtype();
@@ -149,7 +150,8 @@ namespace ctranslate2 {
                         input_padder,
                         input_padder,
                         true,
-                        position_bias);
+                        position_bias,
+                        step);
 
         if (_post_attention_layer_norm)
           (*_post_attention_layer_norm)(input, hidden);
@@ -172,7 +174,8 @@ namespace ctranslate2 {
                       input_padder,
                       input_padder,
                       true,
-                      position_bias);
+                      position_bias,
+                      step);
 
       StorageView context(dtype, device);
       if (_encoder_attention) {
@@ -592,7 +595,8 @@ namespace ctranslate2 {
                         input_padder.get(),
                         memory_padder.get(),
                         return_normalized_attention(),
-                        &position_bias);
+                        &position_bias,
+                        step);
           layer_in_chunk = std::move(layer_out);
 
           if (layer_attention) {
