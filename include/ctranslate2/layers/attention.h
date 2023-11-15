@@ -36,7 +36,8 @@ namespace ctranslate2 {
                       const Padder* values_padder = nullptr,
                       bool return_normalized_attention = true,
                       StorageView* position_bias = nullptr,
-                      dim_t step = 0) const;
+                      dim_t step = 0,
+                      int chunk_index = 0) const;
 
       bool has_positional_embeddings() const {
         return _relative_position_keys || _relative_attention_bias || _rotary_embeddings || _alibi;

@@ -92,7 +92,8 @@ namespace ctranslate2 {
                       const Padder* memory_padder = nullptr,
                       bool return_normalized_attention = true,
                       StorageView* position_bias = nullptr,
-                      dim_t step = 0) const;
+                      dim_t step = 0,
+                      int chunk_index = 0) const;
 
       DataType output_type() const override {
         return _ff.output_type();
