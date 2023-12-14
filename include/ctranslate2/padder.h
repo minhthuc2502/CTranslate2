@@ -14,10 +14,15 @@ namespace ctranslate2 {
       return device == Device::CPU || compute_type != ComputeType::FLOAT16;
     }
 
+    Padder() = default;
     // If max_time is negative, it is set to the maximum length.
     Padder(const StorageView& lengths,
            const dim_t max_time = -1,
            const dim_t pad_batch_to_multiple = 1);
+
+
+    // clone
+    Padder* clone(Device device, int index) const;
 
     // Merge batch and time dimensions and remove padding.
     void remove_padding(StorageView& x) const;

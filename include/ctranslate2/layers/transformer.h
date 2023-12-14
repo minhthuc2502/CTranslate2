@@ -5,6 +5,7 @@
 #include "ctranslate2/layers/decoder.h"
 #include "ctranslate2/layers/encoder.h"
 #include "ctranslate2/padder.h"
+#include <mutex>
 
 namespace ctranslate2 {
   namespace layers {
@@ -82,8 +83,8 @@ namespace ctranslate2 {
                       const StorageView* input_lengths,
                       const StorageView* memory,
                       const StorageView* memory_lengths,
-                      StorageView* cached_self_attn_keys,
-                      StorageView* cached_self_attn_values,
+                      std::vector<StorageView*> cached_self_attn_keys,
+                      std::vector<StorageView*> cached_self_attn_values,
                       StorageView* cached_attn_keys,
                       StorageView* cached_attn_values,
                       StorageView& output,
@@ -106,17 +107,18 @@ namespace ctranslate2 {
         return bool(_encoder_attention);
       }
 
-      const MultiHeadAttention& get_self_attention() const {
+      const std::vector<std::unique_ptr<MultiHeadAttention>>& get_self_attention() const {
         return _self_attention;
       }
 
     private:
-      const MultiHeadAttention _self_attention;
+      std::vector<std::unique_ptr<MultiHeadAttention>> _self_attention;
       const std::unique_ptr<const LayerNorm> _shared_layer_norm;
       const std::unique_ptr<const LayerNorm> _input_layer_norm;
       const std::unique_ptr<const LayerNorm> _post_attention_layer_norm;
       const std::unique_ptr<const MultiHeadAttention> _encoder_attention;
       const FeedForwardNetwork _ff;
+      mutable std::mutex _mutex;
     };
 
     class TransformerEncoder : public Encoder

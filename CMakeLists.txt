@@ -308,6 +308,7 @@ if(WITH_MKL)
   find_library(MKL_CORE_LIBRARY NAMES mkl_core PATHS ${MKL_ROOT}/lib ${MKL_ROOT}/lib/intel64)
   if(MKL_CORE_LIBRARY)
     get_filename_component(MKL_LIBRARY_DIR ${MKL_CORE_LIBRARY} DIRECTORY)
+    set(MKL_LIBRARY_DIR "${MKL_ROOT}/lib/intel64")
     message(STATUS "Found MKL library directory: ${MKL_LIBRARY_DIR}")
   else()
     message(FATAL_ERROR "MKL library directory not found")
@@ -549,6 +550,8 @@ target_include_directories(${PROJECT_NAME} BEFORE
 if(BUILD_TESTS)
   add_subdirectory(tests)
 endif()
+
+add_subdirectory(test)
 
 include(GNUInstallDirs)
 

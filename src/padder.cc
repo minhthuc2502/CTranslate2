@@ -73,5 +73,15 @@ namespace ctranslate2 {
     x.reshape(std::move(shape));
   }
 
+  Padder* Padder::clone(Device device, int index) const {
+    ScopedDeviceSetter scoped_device_setter(device, index);
+    Padder* padder_copy = new Padder();
+    padder_copy->_max_time = _max_time;
+    padder_copy->_batch_size = _batch_size;
+    padder_copy->_padded_to_flat = _padded_to_flat.to(device);
+    padder_copy->_flat_to_padded = _flat_to_padded.to(device);
+    return padder_copy;
+  }
+
 
 }

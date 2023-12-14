@@ -5,12 +5,21 @@ import ctranslate2
 import sentencepiece as spm
 
 
+def get_model_file(model_path: str):
+    for filename in os.listdir(model_path):
+        if filename.endswith(".pt"):
+            _model_file = os.path.join(model_path, filename)
+            return _model_file
+    return ""
+
+
 def main():
     model_dir = sys.argv[1]
     system_prompt = sys.argv[2] if len(sys.argv) > 2 else None
 
     print("Loading the model...")
-    generator = ctranslate2.Generator(model_dir, device="cpu")
+    model_path = get_model_file(model_dir)
+    generator = ctranslate2.GeneratorOnTheFly(model_path, quantization="int8")
     sp = spm.SentencePieceProcessor(os.path.join(model_dir, "tokenizer.model"))
 
     context_length = 4096
@@ -41,10 +50,9 @@ def main():
 
         step_results = generator.generate_tokens(
             prompt_tokens,
-            max_length=max_generation_length,
-            sampling_temperature=0.6,
             sampling_topk=20,
-            sampling_topp=1,
+            sampling_topp=0.6,
+            sampling_temperature=0.6,
         )
 
         print("")
@@ -93,11 +101,11 @@ B_SYS, E_SYS = "<<SYS>>\n", "\n<</SYS>>\n\n"
 def build_prompt(sp, dialog):
     if dialog[0]["role"] == "system":
         dialog = [
-            {
-                "role": dialog[1]["role"],
-                "content": B_SYS + dialog[0]["content"] + E_SYS + dialog[1]["content"],
-            }
-        ] + dialog[2:]
+                     {
+                         "role": dialog[1]["role"],
+                         "content": B_SYS + dialog[0]["content"] + E_SYS + dialog[1]["content"],
+                     }
+                 ] + dialog[2:]
 
     assert all([msg["role"] == "user" for msg in dialog[::2]]) and all(
         [msg["role"] == "assistant" for msg in dialog[1::2]]
@@ -114,15 +122,15 @@ def build_prompt(sp, dialog):
             )
             + ["</s>"]
             for prompt, answer in zip(
-                dialog[::2],
-                dialog[1::2],
-            )
+            dialog[::2],
+            dialog[1::2],
+        )
         ],
         [],
     )
 
     assert (
-        dialog[-1]["role"] == "user"
+            dialog[-1]["role"] == "user"
     ), f"Last message must be from user, got {dialog[-1]['role']}"
 
     dialog_tokens += ["<s>"] + sp.encode_as_pieces(

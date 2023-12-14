@@ -74,6 +74,12 @@ namespace ctranslate2 {
       }
     }
 
+    static void move_variable_to_device(StorageView& variable, const Device device) {
+      if (variable.is_scalar() || variable.device() == device)
+        return;
+      variable = variable.to(device);
+    }
+
     template <typename VariablesCollection>
     static void move_variables(VariablesCollection& variables,
                                const Device src_device, const int src_device_index,
@@ -93,6 +99,27 @@ namespace ctranslate2 {
       if (dst_device != Device::CPU) {
         ScopedDeviceSetter scoped_device_setter(dst_device, dst_device_index);
         move_variables_to_device(variables, dst_device);
+      }
+
+      synchronize_device(src_device, src_device_index);  // Wait for asynchronous deallocations.
+    }
+
+    static void move_variable(StorageView& variable,
+                               const Device src_device, const int src_device_index,
+                               const Device dst_device, const int dst_device_index) {
+      if (src_device == dst_device && src_device_index == dst_device_index)
+        return;
+
+      // Move variables back to the CPU device.
+      if (src_device != Device::CPU) {
+        ScopedDeviceSetter scoped_device_setter(src_device, src_device_index);
+        move_variable_to_device(variable, Device::CPU);
+      }
+
+      // Move variables to the destination device.
+      if (dst_device != Device::CPU) {
+        ScopedDeviceSetter scoped_device_setter(dst_device, dst_device_index);
+        move_variable_to_device(variable, dst_device);
       }
 
       synchronize_device(src_device, src_device_index);  // Wait for asynchronous deallocations.
@@ -137,7 +164,8 @@ namespace ctranslate2 {
     Model::~Model() {
       if (!_variable_index.empty()) {
         _variable_index.clear();
-        synchronize_device(_device, _device_index);  // Wait for asynchronous deallocations.
+        for (auto device_index : _device_index)
+          synchronize_device(_device, device_index);  // Wait for asynchronous deallocations.
       }
     }
 
@@ -146,7 +174,13 @@ namespace ctranslate2 {
     }
 
     void Model::set_device(const Device device, const int index) {
-      move_variables(_variable_index, _device, _device_index, device, index);
+      // todo: to remove
+      //move_variables(_variable_index, _device, _device_index, device, index);
+      //_device = device;
+      //_device_index = index;
+    }
+
+    void Model::set_device(const Device device, const std::vector<int>& index) {
       _device = device;
       _device_index = index;
     }
@@ -403,10 +437,32 @@ namespace ctranslate2 {
                                  + "(Forward compatibility is not guaranteed.)");
     }
 
+    static std::vector<StorageView*> split_variables(StorageView variable, int num)
+    {
+      if (variable.rank() < 1 || variable.rank() > 2)
+        throw std::runtime_error("Unsupported split variables which has the rank of matrix more than 2."
+                                 "Current variable has the rank " + std::to_string(variable.rank()));
+
+      dim_t output_per_partition_dim = variable.dim(-1) / num;
+      std::vector<dim_t> partitions_size(num, output_per_partition_dim);
+      std::vector<StorageView*> outputs(num);
+      ops::Split(-1, partitions_size)(variable, outputs);
+      return outputs;
+    }
+
+    static bool replace(std::string& str, const std::string& from, const std::string& to) {
+      size_t start_pos = str.find(from);
+      if (start_pos == std::string::npos)
+        return false;
+      str.replace(start_pos, from.length(), to);
+      return true;
+    }
+
     std::shared_ptr<const Model> Model::load(const std::string& path,
                                              Device device,
                                              int device_index,
-                                             ComputeType compute_type) {
+                                             ComputeType compute_type,
+                                             bool tensor_parallel) {
       ModelFileReader model_reader(path);
       return load(model_reader, device, device_index, compute_type);
     }
@@ -414,7 +470,8 @@ namespace ctranslate2 {
     std::shared_ptr<const Model> Model::load(ModelReader& model_reader,
                                              Device device,
                                              int device_index,
-                                             ComputeType compute_type) {
+                                             ComputeType compute_type,
+                                             bool tensor_parallel) {
       {
         // Log the system configuration the first time a model is loaded.
         static std::once_flag log_once;
@@ -458,6 +515,11 @@ namespace ctranslate2 {
       }
 
       // Load the variables.
+      const int world_size = get_gpu_count();
+      std::vector<int> device_indexes;
+      for (size_t i = 0; i < world_size; ++i) {
+        device_indexes.push_back(i);
+      }
       const auto num_variables = consume<uint32_t>(model_file);
       model->_variable_index.reserve(num_variables);
       for (uint32_t i = 0; i < num_variables; ++i) {
@@ -481,14 +543,29 @@ namespace ctranslate2 {
 
         StorageView variable(std::move(shape), dtype);
         consume<char>(model_file, num_bytes, static_cast<char*>(variable.buffer()));
-        model->register_variable(std::move(name), std::move(variable));
+        if (name.find("self_attention") != std::string::npos) {
+          auto outputs = split_variables(std::move(variable), world_size);
+          for (size_t i = 0; i < outputs.size(); ++i) {
+            std::string tmp = name;
+            replace(tmp, "self_attention", "partition_" + std::to_string(i) + "/self_attention");
+            model->register_variable(tmp, *outputs[i]);
+            // todo: have to handle it in case cpu
+            move_variable(*(model->_variable_index[tmp]), model->device(), 0, device, i);
+          }
+        }
+        else {
+          for (int i = 0; i < world_size; ++i) {
+            copy_variable(variable, device, i);
+          }
+          variable.release();
+        }
       }
 
       // Maybe quantize/dequantize/convert the variables to match the requested compute type.
       model->set_compute_type(compute_type, device, device_index);
 
       // Move variables to the target device.
-      model->set_device(device, device_index);
+      model->set_device(device, device_indexes);
 
       // Register variable aliases.
       if (binary_version >= 3) {
@@ -532,7 +609,8 @@ namespace ctranslate2 {
       }
 
       model->_device = device;
-      model->_device_index = device_index;
+      // todo: to handle in this case loading
+      model->_device_index = {device_index};
       return model;
     }
 

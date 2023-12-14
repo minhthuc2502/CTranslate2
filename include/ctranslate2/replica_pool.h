@@ -304,7 +304,7 @@ namespace ctranslate2 {
   public:
     ReplicaWorker(const std::shared_ptr<const models::Model>& model, size_t num_threads)
       : _device(model->device())
-      , _device_index(model->device_index())
+      , _device_index(model->device_index()[0]) // todo fix this
       , _num_threads(num_threads)
       , _allocator(nullptr)
     {

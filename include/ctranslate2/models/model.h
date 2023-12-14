@@ -26,11 +26,13 @@ namespace ctranslate2 {
       static std::shared_ptr<const Model> load(const std::string& path,
                                                Device device = Device::CPU,
                                                int device_index = 0,
-                                               ComputeType compute_type = ComputeType::DEFAULT);
+                                               ComputeType compute_type = ComputeType::DEFAULT,
+                                               bool tensor_parallel = false);
       static std::shared_ptr<const Model> load(ModelReader& model_reader,
                                                Device device = Device::CPU,
                                                int device_index = 0,
-                                               ComputeType compute_type = ComputeType::DEFAULT);
+                                               ComputeType compute_type = ComputeType::DEFAULT,
+                                               bool tensor_parallel = false);
 
       virtual std::unique_ptr<SequenceToSequenceReplica> as_sequence_to_sequence() const;
       virtual std::unique_ptr<SequenceGeneratorReplica> as_sequence_generator() const;
@@ -54,7 +56,7 @@ namespace ctranslate2 {
         return _device;
       }
 
-      int device_index() const {
+      std::vector<int> device_index() const {
         return _device_index;
       }
 
@@ -82,12 +84,14 @@ namespace ctranslate2 {
         return true;
       }
 
-      ScopedDeviceSetter get_scoped_device_setter() const {
-        return ScopedDeviceSetter(_device, _device_index);
+      ScopedDeviceSetter get_scoped_device_setter(int device_index = 0) const {
+        if (std::find(_device_index.begin(), _device_index.end(), device_index) != _device_index.end())
+          return ScopedDeviceSetter(_device, device_index);
       }
 
       // If the model contains variables, they will be moved to the new device.
       void set_device(const Device device, const int index = 0);
+      void set_device(const Device device, const std::vector<int>& index = {0});
 
       // Copy the model to another device.
       std::shared_ptr<const Model> copy_to(Device device, int device_index = 0) const;
@@ -155,7 +159,7 @@ namespace ctranslate2 {
       ComputeType infer_compute_type() const;
 
       Device _device = Device::CPU;
-      int _device_index = 0;
+      std::vector<int> _device_index = {0};
       size_t _binary_version = 0;
       size_t _spec_revision = 0;
       ComputeType _saved_compute_type = ComputeType::DEFAULT;
