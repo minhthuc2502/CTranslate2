@@ -368,7 +368,7 @@ namespace ctranslate2 {
 
   StorageView& StorageView::copy_from(const StorageView& other, bool synchronous) {
     resize_as(other);
-    TYPE_DISPATCH(other._dtype, copy_from(other.data<T>(), other._size, other._device, synchronous));
+    TYPE_DISPATCH(other._dtype, copy_from(other.data<T>(), other._size, other._device, other._device_index, synchronous));
     return *this;
   }
 
@@ -406,7 +406,7 @@ namespace ctranslate2 {
   }
 
   template <typename T>
-  StorageView& StorageView::copy_from(const T* data, dim_t size, Device device, bool synchronous) {
+  StorageView& StorageView::copy_from(const T* data, dim_t size, Device device, int index, bool synchronous) {
     if (size != _size)
       THROW_INVALID_ARGUMENT("buffer to copy is of size " + std::to_string(size)
                              + " but current storage size is " + std::to_string(_size));
@@ -419,7 +419,7 @@ namespace ctranslate2 {
     } else
 #endif
     {
-      DEVICE_DISPATCH(device, primitives<D>::copy(data, this->data<T>(), size));
+      DEVICE_DISPATCH(device, primitives<D>::copy(data, this->data<T>(), size, index, _device_index));
     }
 
     if (synchronous)
@@ -500,7 +500,7 @@ namespace ctranslate2 {
   template StorageView& StorageView::view(T* data, Shape shape);        \
   template StorageView& StorageView::fill(T value);                     \
   template StorageView&                                                 \
-  StorageView::copy_from(const T* data, dim_t size, Device device, bool);
+  StorageView::copy_from(const T* data, dim_t size, Device device, int index, bool);
 
   DECLARE_ALL_TYPES(DECLARE_IMPL)
 

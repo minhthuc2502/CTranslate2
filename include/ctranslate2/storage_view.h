@@ -234,7 +234,7 @@ namespace ctranslate2 {
     StorageView& copy_from(const StorageView& other, bool synchronous = false);
 
     template <typename T>
-    StorageView& copy_from(const T* data, dim_t size, Device device, bool synchronous = false);
+    StorageView& copy_from(const T* data, dim_t size, Device device, int index = 0, bool synchronous = false);
 
     friend std::ostream& operator<<(std::ostream& os, const StorageView& storage);
 

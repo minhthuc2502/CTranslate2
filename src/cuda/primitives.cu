@@ -43,9 +43,14 @@ namespace ctranslate2 {
 
   template<>
   template <typename T>
-  void primitives<Device::CUDA>::copy(const T* x, T* y, dim_t size) {
-    CUDA_CHECK(cudaMemcpyAsync(y, x, size * sizeof (T),
-                               cudaMemcpyDeviceToDevice, cuda::get_cuda_stream()));
+  void primitives<Device::CUDA>::copy(const T* x, T* y, dim_t size, int device_x, int device_y) {
+    if (device_x == device_y) {
+      CUDA_CHECK(cudaMemcpyAsync(y, x, size * sizeof (T),
+                                 cudaMemcpyDeviceToDevice, cuda::get_cuda_stream()));
+    }
+    else {
+      CUDA_CHECK(cudaMemcpyPeerAsync(y, device_y, x, device_x, size * sizeof (T), cuda::get_cuda_stream()));
+    }
   }
 
   template<>
@@ -720,7 +725,7 @@ namespace ctranslate2 {
   template void                                                         \
   primitives<Device::CUDA>::indexed_fill(T*, T, const int32_t*, dim_t); \
   template void                                                         \
-  primitives<Device::CUDA>::copy<T>(const T* x, T* y, dim_t size);      \
+  primitives<Device::CUDA>::copy<T>(const T* x, T* y, dim_t size, int device_x, int device_y);      \
   template T                                                            \
   primitives<Device::CUDA>::sum(const T* array, dim_t size);            \
   template dim_t                                                        \

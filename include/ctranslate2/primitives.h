@@ -21,7 +21,7 @@ namespace ctranslate2 {
     static void indexed_fill(T* x, T a, const int32_t* indices, dim_t num_indices);
 
     template <typename T>
-    static void copy(const T* x, T* y, dim_t size);
+    static void copy(const T* x, T* y, dim_t size, int index_x = 0, int index_y = 0);
     template <typename U, typename V>
     static void convert(const U* x, V* y, dim_t size);
 

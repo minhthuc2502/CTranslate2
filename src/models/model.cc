@@ -11,6 +11,7 @@
 #endif
 
 #include "cpu/backend.h"
+#include <iostream>
 
 namespace ctranslate2 {
   namespace models {
@@ -547,17 +548,20 @@ namespace ctranslate2 {
           auto outputs = split_variables(std::move(variable), world_size);
           for (size_t i = 0; i < outputs.size(); ++i) {
             std::string tmp = name;
+            std::cout << "name: " << name << std::endl;
             replace(tmp, "self_attention", "partition_" + std::to_string(i) + "/self_attention");
+            std::cout << "name after: " << tmp << std::endl;
             model->register_variable(tmp, *outputs[i]);
             // todo: have to handle it in case cpu
             move_variable(*(model->_variable_index[tmp]), model->device(), 0, device, i);
+            std::cout << model->_variable_index[tmp] << std::endl;
           }
         }
         else {
-          for (int i = 0; i < world_size; ++i) {
-            copy_variable(variable, device, i);
-          }
-          variable.release();
+          std::cout << "name 2: " << name << std::endl;
+          variable = copy_variable(variable, device, i);
+          std::cout << variable << std::endl;
+          model->register_variable(name, std::move(variable));
         }
       }
 
