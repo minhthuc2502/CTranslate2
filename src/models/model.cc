@@ -438,7 +438,7 @@ namespace ctranslate2 {
                                  + "(Forward compatibility is not guaranteed.)");
     }
 
-    static std::vector<StorageView*> split_variables(StorageView variable, int num)
+    static std::vector<StorageView> split_variables(StorageView variable, int num)
     {
       if (variable.rank() < 1 || variable.rank() > 2)
         throw std::runtime_error("Unsupported split variables which has the rank of matrix more than 2."
@@ -446,8 +446,13 @@ namespace ctranslate2 {
 
       dim_t output_per_partition_dim = variable.dim(-1) / num;
       std::vector<dim_t> partitions_size(num, output_per_partition_dim);
-      std::vector<StorageView*> outputs(num);
-      ops::Split(-1, partitions_size)(variable, outputs);
+      std::vector<StorageView> outputs(num, StorageView(variable.dtype(), variable.device()));
+      std::vector<StorageView*> p_outputs(num);
+
+      for (int i = 0; i < num; ++i) {
+        p_outputs[i] = &outputs[i];
+      }
+      ops::Split(-1, partitions_size)(variable, p_outputs);
       return outputs;
     }
 
@@ -544,22 +549,23 @@ namespace ctranslate2 {
 
         StorageView variable(std::move(shape), dtype);
         consume<char>(model_file, num_bytes, static_cast<char*>(variable.buffer()));
-        if (name.find("self_attention") != std::string::npos) {
+        if (name.find("self_attention") != std::string::npos && !variable.is_scalar()) {
+          std::cout << "name: " << name << std::endl;
+          std::cout << "original tensor: " << variable << std::endl;
           auto outputs = split_variables(std::move(variable), world_size);
-          for (size_t i = 0; i < outputs.size(); ++i) {
+          for (size_t index = 0; index < outputs.size(); ++index) {
             std::string tmp = name;
-            std::cout << "name: " << name << std::endl;
-            replace(tmp, "self_attention", "partition_" + std::to_string(i) + "/self_attention");
+            replace(tmp, "self_attention", "partition_" + std::to_string(index) + "/self_attention");
             std::cout << "name after: " << tmp << std::endl;
-            model->register_variable(tmp, *outputs[i]);
+            model->register_variable(tmp, std::move(outputs[index]));
             // todo: have to handle it in case cpu
-            move_variable(*(model->_variable_index[tmp]), model->device(), 0, device, i);
-            std::cout << model->_variable_index[tmp] << std::endl;
+            move_variable(*(model->_variable_index[tmp]), model->device(), 0, device, index);
+            std::cout << *model->_variable_index[tmp] << std::endl;
           }
         }
         else {
           std::cout << "name 2: " << name << std::endl;
-          variable = copy_variable(variable, device, i);
+          variable = copy_variable(variable, device, 0);
           std::cout << variable << std::endl;
           model->register_variable(name, std::move(variable));
         }
