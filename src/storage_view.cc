@@ -3,11 +3,13 @@
 #include "ctranslate2/primitives.h"
 
 #include "dispatch.h"
+#include <iostream>
+#include <mutex>
 
-#define PRINT_MAX_VALUES 6
+#define PRINT_MAX_VALUES 300
 
 namespace ctranslate2 {
-
+    std::mutex mutex;
   StorageView::StorageView(DataType type, Device device)
     : _dtype(type)
     , _device(device)
@@ -89,12 +91,14 @@ namespace ctranslate2 {
 
   StorageView StorageView::to(Device device) const {
     StorageView device_copy(_shape, _dtype, device);
-    return device_copy.copy_from(*this);
+    return device_copy.copy_from(*this, true);
   }
 
   StorageView StorageView::to(DataType dtype) const {
     if (_dtype == dtype)
       return *this;
+    const ScopedDeviceSetter scoped_device_setter(_device, _device_index);
+
     StorageView converted(_shape, dtype, _device);
     if (_dtype == DataType::FLOAT32 && dtype == DataType::FLOAT16) {
       DEVICE_DISPATCH(_device,
@@ -162,7 +166,7 @@ namespace ctranslate2 {
     if (size <= _allocated_size)
       return *this;
     release();
-    _allocator = &get_allocator(_device);
+    _allocator = &get_allocator(_device, _device_index);
     _data = _allocator->allocate(size * item_size(), _device_index);
     if (_data == nullptr)
       THROW_RUNTIME_ERROR("failed to allocated memory");
@@ -292,6 +296,18 @@ namespace ctranslate2 {
     return *this;
   }
 
+  StorageView& StorageView::move_from(StorageView&& other) noexcept {
+    std::swap(_dtype, other._dtype);
+    std::swap(_device, other._device);
+    std::swap(_device_index, other._device_index);
+    _allocator = &get_allocator(_device, _device_index);
+    std::swap(_data, other._data);
+    std::swap(_allocated_size, other._allocated_size);
+    std::swap(_size, other._size);
+    std::swap(_shape, other._shape);
+    return *this;
+  }
+
   StorageView& StorageView::shallow_copy(StorageView& other) {
     _dtype = other._dtype;
     TYPE_DISPATCH(_dtype, view(other.data<T>(), other._shape));
@@ -413,9 +429,9 @@ namespace ctranslate2 {
 #ifdef CT2_WITH_CUDA
     if (device != _device) {
       if (device == Device::CUDA)
-        cross_device_primitives<Device::CUDA, Device::CPU>::copy(data, this->data<T>(), size);
+        cross_device_primitives<Device::CUDA, Device::CPU>::copy(data, this->data<T>(), size, _device_index);
       else
-        cross_device_primitives<Device::CPU, Device::CUDA>::copy(data, this->data<T>(), size);
+        cross_device_primitives<Device::CPU, Device::CUDA>::copy(data, this->data<T>(), size, _device_index);
     } else
 #endif
     {
@@ -423,7 +439,7 @@ namespace ctranslate2 {
     }
 
     if (synchronous)
-      synchronize_stream(_device);
+      synchronize_device(_device, index);
 
     return *this;
   }

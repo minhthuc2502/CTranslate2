@@ -37,6 +37,8 @@ namespace ctranslate2 {
                       bool return_normalized_attention = true,
                       StorageView* position_bias = nullptr,
                       dim_t offset = 0) const;
+      void norm_input(const StorageView& queries, StorageView& output);
+      void norm_output(const StorageView &queries, StorageView& output);
 
       bool has_positional_embeddings() const {
         return _relative_position_keys || _relative_attention_bias || _rotary_embeddings || _alibi;

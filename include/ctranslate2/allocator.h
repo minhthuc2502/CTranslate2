@@ -22,7 +22,7 @@ namespace ctranslate2 {
   };
 
   template <Device D>
-  Allocator& get_allocator();
-  Allocator& get_allocator(Device device);
+  Allocator& get_allocator(int device_index = 0);
+  Allocator& get_allocator(Device device, int device_index = 0);
 
 }

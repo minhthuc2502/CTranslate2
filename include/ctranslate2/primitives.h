@@ -225,7 +225,7 @@ namespace ctranslate2 {
   template <Device D1, Device D2>
   struct cross_device_primitives {
     template <typename T>
-    static void copy(const T* x, T* y, dim_t size);
+    static void copy(const T* x, T* y, dim_t size, int device_index = 0);
   };
 
 }

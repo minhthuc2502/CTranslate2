@@ -438,13 +438,13 @@ namespace ctranslate2 {
                                  + "(Forward compatibility is not guaranteed.)");
     }
 
-    static std::vector<StorageView> split_variables(StorageView variable, int num)
+    static std::vector<StorageView> split_variables(StorageView variable, int num, int dim)
     {
       if (variable.rank() < 1 || variable.rank() > 2)
         throw std::runtime_error("Unsupported split variables which has the rank of matrix more than 2."
                                  "Current variable has the rank " + std::to_string(variable.rank()));
 
-      dim_t output_per_partition_dim = variable.dim(-1) / num;
+      dim_t output_per_partition_dim = variable.dim(dim) / num;
       std::vector<dim_t> partitions_size(num, output_per_partition_dim);
       std::vector<StorageView> outputs(num, StorageView(variable.dtype(), variable.device()));
       std::vector<StorageView*> p_outputs(num);
@@ -452,7 +452,7 @@ namespace ctranslate2 {
       for (int i = 0; i < num; ++i) {
         p_outputs[i] = &outputs[i];
       }
-      ops::Split(-1, partitions_size)(variable, p_outputs);
+      ops::Split(dim, partitions_size)(variable, p_outputs);
       return outputs;
     }
 
@@ -528,6 +528,9 @@ namespace ctranslate2 {
       }
       const auto num_variables = consume<uint32_t>(model_file);
       model->_variable_index.reserve(num_variables);
+      dim_t model_dim = 2048;
+      dim_t num_heads = 32;
+      dim_t num_heads_kv = 4;
       for (uint32_t i = 0; i < num_variables; ++i) {
         auto name = consume<std::string>(model_file);
         const size_t rank = consume<uint8_t>(model_file);
@@ -549,18 +552,58 @@ namespace ctranslate2 {
 
         StorageView variable(std::move(shape), dtype);
         consume<char>(model_file, num_bytes, static_cast<char*>(variable.buffer()));
-        if (name.find("self_attention") != std::string::npos && !variable.is_scalar()) {
+        if (name.find("self_attention") != std::string::npos) {
           std::cout << "name: " << name << std::endl;
           std::cout << "original tensor: " << variable << std::endl;
-          auto outputs = split_variables(std::move(variable), world_size);
-          for (size_t index = 0; index < outputs.size(); ++index) {
-            std::string tmp = name;
-            replace(tmp, "self_attention", "partition_" + std::to_string(index) + "/self_attention");
-            std::cout << "name after: " << tmp << std::endl;
-            model->register_variable(tmp, std::move(outputs[index]));
-            // todo: have to handle it in case cpu
-            move_variable(*(model->_variable_index[tmp]), model->device(), 0, device, index);
-            std::cout << *model->_variable_index[tmp] << std::endl;
+          if (!variable.is_scalar()  && name.find("layer_norm") == std::string::npos)
+          {
+            std::vector<StorageView> outputs;
+            if (name.find("linear_1") != std::string::npos) {
+              outputs = split_variables(std::move(variable), world_size, 1);
+            }
+            else if (name.find("linear_0") != std::string::npos) { // 6144 x 4096 => 2048 (q) + 2048 + 512 (k) +512 + 512 (v)+ 512
+              dim_t q_dim = model_dim / world_size;
+              dim_t kv_dim = (model_dim/num_heads * num_heads_kv) / world_size;
+              std::vector<dim_t> partitions_size({q_dim, q_dim, kv_dim , kv_dim, kv_dim, kv_dim});
+              std::vector<StorageView> outputs_tmp = std::vector<StorageView>(partitions_size.size(),StorageView(variable.dtype(), variable.device()));
+              std::vector<StorageView*> p_outputs(outputs_tmp.size());
+
+              for (int i = 0; i < outputs_tmp.size(); ++i) {
+                p_outputs[i] = &outputs_tmp[i];
+              }
+              ops::Split(0, partitions_size)(variable, p_outputs);
+              for (int i = 0; i < world_size; i ++) {
+                std::vector<const StorageView*> output_linear = {p_outputs[i], p_outputs[i + world_size], p_outputs[i + world_size * 2]};
+                StorageView tmp(p_outputs[0]->dtype(), p_outputs[0]->device());
+                ops::Concat(0)(output_linear, tmp);
+                outputs.emplace_back(std::move(tmp));
+              }
+            }
+            else {
+              outputs = split_variables(std::move(variable), world_size, 0);
+            }
+            for (size_t index = 0; index < outputs.size(); ++index) {
+              std::string tmp = name;
+              replace(tmp, "self_attention", "partition_" + std::to_string(index) + "/self_attention");
+              std::cout << "name after: " << tmp << std::endl;
+              model->register_variable(tmp, std::move(outputs[index]));
+              // todo: have to handle it in case cpu
+              move_variable(*(model->_variable_index[tmp]), model->device(), 0, device, index);
+	            std::cout << "test after:" << std::endl;
+	            std::cout << model->_variable_index[tmp]->device_index() << std::endl;
+              ScopedDeviceSetter scoped_device_setter(device, index);
+              std::cout << *(model->_variable_index[tmp]) << std::endl;
+            }
+          }
+          else {
+            for (int index = 0; index < world_size; ++index) {
+              std::string tmp = name;
+              replace(tmp, "self_attention", "partition_" + std::to_string(index) + "/self_attention");
+              std::cout << "name after: " << tmp << std::endl;
+              StorageView tensor_copy = variable;
+              model->register_variable(tmp, tensor_copy);
+              move_variable(*(model->_variable_index[tmp]), model->device(), 0, device, index);
+            }
           }
         }
         else {
@@ -570,9 +613,8 @@ namespace ctranslate2 {
           model->register_variable(name, std::move(variable));
         }
       }
-
       // Maybe quantize/dequantize/convert the variables to match the requested compute type.
-      model->set_compute_type(compute_type, device, device_index);
+        model->set_compute_type(compute_type, device, device_index);
 
       // Move variables to the target device.
       model->set_device(device, device_indexes);

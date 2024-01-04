@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <numeric>
+#include <iostream>
 
 #include "dispatch.h"
 #include "cpu/parallel.h"
@@ -226,8 +227,12 @@ namespace ctranslate2 {
                                   maximum_relative_position).to(queries.device()));
       }
 
+      //std::cout << "queries in dot attention: " << queries << std::endl;
+      //std::cout << "keys in dot attention: " << keys << std::endl;
+
       const ops::MatMul keys_matmul(/*trans_a=*/false, /*trans_b=*/true, queries_scale);
       keys_matmul(queries, keys, output);
+      //std::cout << "output layer 0 in dot attention: " << output << std::endl;
       if (relative_position_keys)
         add_relative_representations(queries,
                                      *relative_positions,
@@ -262,14 +267,21 @@ namespace ctranslate2 {
       if (alibi)
         alibi->apply(output, queries_scale);
 
+      //std::cout << "input layer 1 in dot attention: " << output << std::endl;
+      //std::cout << "values_lengths layer 1 in dot attention: " << *values_lengths << std::endl;
+
       StorageView attn(values.dtype(), values.device());
       ops::SoftMax()(output, values_lengths, attn);
+      //std::cout << "attn layer 1 in dot attention: " << attn << std::endl;
 
       if (attention && !return_normalized_attention)
         save_attention(*attention, std::move(output), beam_size);
 
       const ops::MatMul values_matmul;
+      //std::cout << "values layer 1 in dot attention: " << values << std::endl;
       values_matmul(attn, values, output);
+      //std::cout << "output layer 1 in dot attention: " << output << std::endl;
+
       if (relative_position_values)
         add_relative_representations(attn,
                                      *relative_positions,
@@ -391,7 +403,7 @@ namespace ctranslate2 {
       , _relative_position_values(model.get_variable_if_exists(scope + "/relative_position_values"))
       , _queries_scale(model.get_attribute_with_default<float>(
                          scope + "/queries_scale",
-                         1.f / std::sqrt(static_cast<float>(_d_head))))
+                         1.f / std::sqrt(static_cast<float>(_d_head * get_gpu_count()))))
       , _num_heads_kv(model.get_flag_with_default(scope + "/multi_query", false)
                       ? 1
                       : model.get_attribute_with_default<int32_t>(scope + "/num_heads_kv",
@@ -441,12 +453,8 @@ namespace ctranslate2 {
       StorageView values_proj(dtype, device);
 
       const StorageView* q = &queries;
-      if (_layer_norm && _pre_norm) {
-        (*_layer_norm)(queries, queries_proj);
-        q = &queries_proj;
-      }
 
-      _linear[0](*q, fused_proj);
+      _linear[0](*q, fused_proj); // 1 x 10 x 4096 * 4096 x 3077
 
       dim_t beam_size = 1;
 
@@ -487,6 +495,7 @@ namespace ctranslate2 {
       } else {
 
         if (_num_heads_kv < _num_heads) {
+          int world_size = get_gpu_count();
           if (queries_padder)
             queries_padder->add_padding(fused_proj);
 
@@ -496,12 +505,12 @@ namespace ctranslate2 {
           if (_merge_time_and_head_dims) {
             queries_proj.reshape({queries_proj.dim(0), -1, _d_head});
           } else {
-            split_heads(queries_proj, _num_heads);
-            split_heads(keys_proj, _num_heads_kv);
-            split_heads(values_proj, _num_heads_kv);
+            split_heads(queries_proj, _num_heads / world_size);
+            split_heads(keys_proj, _num_heads_kv / world_size);
+            split_heads(values_proj, _num_heads_kv / world_size);
 
-            replicate_heads(keys_proj, _num_heads / _num_heads_kv);
-            replicate_heads(values_proj, _num_heads / _num_heads_kv);
+            replicate_heads(keys_proj, _num_heads / (_num_heads_kv));
+            replicate_heads(values_proj, _num_heads / (_num_heads_kv));
           }
 
         } else {
@@ -523,12 +532,13 @@ namespace ctranslate2 {
             queries_proj.reshape({queries_proj.dim(0), -1, _d_head});
           }
         }
-
         if (cached_keys != nullptr) {
           if (cached_keys->empty()) {
             *cached_keys = std::move(keys_proj);
             *cached_values = std::move(values_proj);
           } else {
+            cached_keys->move_from(std::move(*cached_keys));
+            cached_values->move_from(std::move(*cached_values));
             const ops::Concat concat_op(_cache_time_dim);
             StorageView& tmp = fused_proj;  // Reuse storage.
             tmp = std::move(*cached_keys);
@@ -554,6 +564,10 @@ namespace ctranslate2 {
       }
 
       StorageView& context = fused_proj;  // Reuse storage.
+      //std::cout << "queries_proj dot attention: " << queries_proj << std::endl;
+      //std::cout << "keys_proj dot attention: " << keys_proj << std::endl;
+      //std::cout << "values_proj dot attention: " << values_proj << std::endl;
+
       dot_product_attention(queries_proj,
                             keys_proj,
                             values_proj,
@@ -587,11 +601,20 @@ namespace ctranslate2 {
         if (queries_padder)
           queries_padder->remove_padding(context);
       } else {
-        combine_heads(context, _num_heads, queries_padder, beam_size);
+        combine_heads(context, _num_heads / get_gpu_count(), queries_padder, beam_size);
       }
 
       _linear.back()(context, output);
+      //std::cout << "after linear out: " << output << std::endl;
+    }
 
+    void MultiHeadAttention::norm_input(const StorageView &queries, StorageView& output) {
+      if (_layer_norm && _pre_norm) {
+        (*_layer_norm)(queries, output);
+      }
+    }
+
+    void MultiHeadAttention::norm_output(const StorageView &queries, StorageView& output) {
       if (_layer_norm) {
         ops::Add()(queries, output, output);
 

@@ -3,6 +3,8 @@ if (NOT IS_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/cxxopts/include
     "You probably didn't clone the project with --recursive. You can include it "
     "by calling \"git submodule update --init --recursive\"")
 endif()
+include_directories(/nfs/SSALING-DATA/pham/sentencepiece/install/include)
+link_directories(/nfs/SSALING-DATA/pham/sentencepiece/install/lib)
 
 add_executable(CTranslate2Server
   main.cpp
@@ -15,27 +17,32 @@ add_executable(TranslatorTest
 #[[add_executable(GeneratorTest
   generate_test.cpp
 )]]
+find_library (
+    sentencepiece_lib
+    NAMES sentencepiece
+    HINTS "/nfs/SSALING-DATA/pham/sentencepiece/install/lib" # where to look
+)
 
 target_include_directories(CTranslate2Server
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/cxxopts/include
   )
 target_link_libraries(CTranslate2Server
   PRIVATE ${PROJECT_NAME}
-  sentencepiece
-  boost_program_options
+  ${sentencepiece_lib}
+  #boost_program_options
 )
 
 target_link_libraries(TranslatorTest
   PRIVATE ${PROJECT_NAME}
-  sentencepiece
-  boost_program_options
+  ${sentencepiece_lib}
+  #boost_program_options
 )
 
 #[[
 target_link_libraries(GeneratorTest
   PRIVATE ${PROJECT_NAME}
-  sentencepiece
-  boost_program_options
+  ${sentencepiece_lib}
+  #boost_program_options
 )
 ]]
 

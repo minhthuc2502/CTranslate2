@@ -9,6 +9,7 @@
 #include "ctranslate2/utils.h"
 
 #include "env.h"
+#include <map>
 
 namespace ctranslate2 {
   namespace cuda {
@@ -95,8 +96,12 @@ namespace ctranslate2 {
     // when the thread exits.
 
     cudaStream_t get_cuda_stream() {
-      static thread_local CudaStream cuda_stream;
-      return cuda_stream.get();
+      static thread_local std::map<int, std::unique_ptr<CudaStream>> cuda_stream;
+      int device_index = get_device_index(Device::CUDA);
+      if (cuda_stream.find(device_index) == cuda_stream.end()) {
+        cuda_stream[device_index] = std::make_unique<CudaStream>();
+      }
+      return cuda_stream[device_index]->get();
     }
 
     cublasHandle_t get_cublas_handle() {

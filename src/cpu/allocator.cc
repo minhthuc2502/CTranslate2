@@ -76,7 +76,7 @@ namespace ctranslate2 {
   }
 
   template<>
-  Allocator& get_allocator<Device::CPU>() {
+  Allocator& get_allocator<Device::CPU>(int /*device_index*/) {
     constexpr size_t alignment = 64;
 #ifdef CT2_WITH_MKL
     static cpu::MklAllocator allocator(alignment);

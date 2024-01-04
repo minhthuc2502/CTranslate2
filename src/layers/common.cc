@@ -5,6 +5,7 @@
 #include "ctranslate2/ops/activation.h"
 #include "cpu/backend.h"
 #include "dispatch.h"
+#include <iostream>
 
 namespace ctranslate2 {
   namespace layers {
@@ -302,7 +303,7 @@ namespace ctranslate2 {
     }
 
     dim_t Dense::output_size() const {
-      return _partial_weight ? _partial_weight.dim(0) : _weight.dim(0);
+      return _partial_weight ? _partial_weight.dim(0) : _weight.dim(1);
     }
 
     void Dense::select_weights(const StorageView* index, const StorageView* extra_bias) {
@@ -333,6 +334,7 @@ namespace ctranslate2 {
 
     void Dense::operator()(const StorageView& input, StorageView& output) const {
       PROFILE("Dense");
+      //std::cout << "input: " << input << std::endl;
       const StorageView* qscale = _partial_qscale.empty() ? _qscale : &_partial_qscale;
       const StorageView* weight = _partial_weight.empty() ? &_weight : &_partial_weight;
       const StorageView* bias = _partial_bias.empty() ? _bias : &_partial_bias;
@@ -342,9 +344,20 @@ namespace ctranslate2 {
       if (_quantized_gemm) {
         const auto device = input.device();
         StorageView qinput(_weight.dtype(), device);
+        StorageView qinput2(_weight.dtype(), device);
         StorageView qinput_scale(_qscale->dtype(), device);
+        StorageView qinput_scale2(_qscale->dtype(), device);
         StorageView qoutput(DataType::INT32, device);
         _quantize_op(input, qinput, qinput_scale);
+
+        StorageView tmp1(input.dtype(), input.device());
+        StorageView tmp2(input.dtype(), input.device());
+        StorageView tmp3(input.dtype(), input.device());
+
+        ops::Split(-1, {input.dim(-1) / 2, input.dim(-1) / 2})(input, tmp1, tmp2);
+        ops::Concat(-1)({&tmp1, &tmp1}, tmp3);
+
+        _quantize_op(tmp3, qinput2, qinput_scale2);
         _gemm_op(qinput, *weight, qoutput, compensation);
         _dequantize_op(qoutput,
                        qinput_scale,
@@ -353,6 +366,7 @@ namespace ctranslate2 {
                        /*trans_b=*/true,
                        output,
                        bias);
+        std::cout << "output: " << output << std::endl;
       } else {
         _gemm_op(input, *weight, output, nullptr, bias);
       }

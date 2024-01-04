@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <future>
+#include <iostream>
 
 #include "batch_reader.h"
 #include "models/model.h"
@@ -223,6 +224,9 @@ namespace ctranslate2 {
       pop_results(/*blocking=*/true);
     }
 
+  public:
+    const models::Model *_model;
+
   private:
     std::unique_ptr<ThreadPool> _thread_pool;
 
@@ -244,6 +248,7 @@ namespace ctranslate2 {
       workers.reserve(models.size());
       for (const auto& model : models) {
         workers.emplace_back(std::make_unique<ReplicaWorker<Replica>>(model, config.num_threads_per_replica));
+        _model = model.get();
       }
 
       size_t max_queue_size = std::numeric_limits<size_t>::max();
@@ -304,10 +309,13 @@ namespace ctranslate2 {
   public:
     ReplicaWorker(const std::shared_ptr<const models::Model>& model, size_t num_threads)
       : _device(model->device())
-      , _device_index(model->device_index()[0]) // todo fix this
+      , _device_index(model->device_index()) // todo fix this
       , _num_threads(num_threads)
-      , _allocator(nullptr)
     {
+      for (auto i = 0; i < _device_index.size(); ++i)
+      {
+        _allocator.push_back(nullptr);
+      }
       set_model(model);
     }
 
@@ -329,19 +337,20 @@ namespace ctranslate2 {
       return model;
     }
 
-    Allocator* allocator() {
+    std::vector<Allocator*>& allocator() {
       return _allocator;
     }
 
   protected:
     void initialize() override {
-      set_device_index(_device, _device_index);
-
       // Set the number of computation threads for the current thread.
       set_num_threads(_num_threads);
+      for (auto index : _device_index) {
+        set_device_index(_device, index);
 
-      // Register the memory allocator used in this thread.
-      _allocator = &get_allocator(_device);
+        // Register the memory allocator used in this thread.
+        _allocator[index] = &get_allocator(_device, index);
+      }
     }
 
     void idle() override {
@@ -356,9 +365,9 @@ namespace ctranslate2 {
 
   private:
     const Device _device;
-    const int _device_index;
+    std::vector<int> _device_index;
     const size_t _num_threads;
-    Allocator* _allocator;
+    std::vector<Allocator*> _allocator;
     std::unique_ptr<Replica> _replica;
   };
 

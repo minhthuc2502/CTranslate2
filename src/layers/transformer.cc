@@ -1,8 +1,10 @@
 #include "ctranslate2/layers/transformer.h"
+#include "cuda/utils.h"
 
 #include <cmath>
 #include <thread>
 #include <future>
+#include <iostream>
 
 namespace ctranslate2 {
   namespace layers {
@@ -103,7 +105,7 @@ namespace ctranslate2 {
       , _ff(model, scope + "/ffn", pre_norm, activation_type) {
       for (int i = 0; i < get_gpu_count(); ++i) {
         std::unique_ptr<MultiHeadAttention> self_attention = std::make_unique<MultiHeadAttention>(model,
-                                                                           scope + "/partition" + std::to_string(i) + "/self_attention",
+                                                                           scope + "/partition_" + std::to_string(i) + "/self_attention",
                                                                            num_heads,
                                                                            /*self_attention=*/true,
                                                                            pre_norm,
@@ -141,47 +143,47 @@ namespace ctranslate2 {
       if (use_parallel_residual) {
         StorageView hidden(dtype, device);
         StorageView attn(dtype, device);
-        for (int i = gpu_count - 1; i >=0; --i) {
+        for (int i = gpu_count - 1; i >= 0; --i) {
           std::promise<StorageView> promise;
           outputs.push_back(promise.get_future());
           StorageView sub_attn(dtype, device);
 
           std::async(std::launch::async, [&]() {
-            StorageView cloned_input;
-            StorageView cloned_input_length;
-            StorageView cloned_memory;
-            StorageView cloned_memory_lengths;
-            StorageView cloned_position_bias;
-            Padder* cloned_input_padder;
-            {
-              const std::lock_guard<std::mutex> lock(_mutex);
-              ScopedDeviceSetter scoped_device_setter(Device::CUDA, i);
-              cloned_input = input.to(device);
-              cloned_input_length = input_length->to(device);
-              cloned_position_bias = position_bias->to(device);
-              cloned_input_padder = input_padder->clone(device, i);
-            }
-            // The parallel residual implementation assumes there is no cross attention.
+              StorageView cloned_input;
+              StorageView cloned_input_length;
+              StorageView cloned_memory;
+              StorageView cloned_memory_lengths;
+              StorageView cloned_position_bias;
+              Padder* cloned_input_padder;
+              {
+                const std::lock_guard<std::mutex> lock(_mutex);
+                ScopedDeviceSetter scoped_device_setter(Device::CUDA, i);
+                cloned_input = input.to(device);
+                cloned_input_length = input_length->to(device);
+                cloned_position_bias = position_bias->to(device);
+                cloned_input_padder = input_padder->clone(device, i);
+              }
+              // The parallel residual implementation assumes there is no cross attention.
 
-            if (_shared_layer_norm)
-              (*_shared_layer_norm)(cloned_input, hidden);
-            else
-              (*_input_layer_norm)(cloned_input, hidden);
+              if (_shared_layer_norm)
+                (*_shared_layer_norm)(cloned_input, hidden);
+              else
+                (*_input_layer_norm)(cloned_input, hidden);
 
-            (*_self_attention[i])(hidden,
-                                  hidden,
-                                  &cloned_input_length,
-                                  sub_attn,
-                                  cached_self_attn_keys[gpu_count - i - 1],
-                                  cached_self_attn_values[gpu_count - i - 1],
-                                  nullptr,
-                                  cloned_input_padder,
-                                  cloned_input_padder,
-                                  true,
-                                  &cloned_position_bias,
-                                  offset);
-            promise.set_value(std::move(sub_attn));
-            delete cloned_input_padder;
+              (*_self_attention[i])(hidden,
+                                    hidden,
+                                    &cloned_input_length,
+                                    sub_attn,
+                                    cached_self_attn_keys[gpu_count - i - 1],
+                                    cached_self_attn_values[gpu_count - i - 1],
+                                    nullptr,
+                                    cloned_input_padder,
+                                    cloned_input_padder,
+                                    true,
+                                    &cloned_position_bias,
+                                    offset);
+              promise.set_value(std::move(sub_attn));
+              delete cloned_input_padder;
           });
         }
         std::vector<StorageView> output_future;
@@ -207,59 +209,85 @@ namespace ctranslate2 {
         return;
       }
 
-      for (int i = gpu_count - 1; i >= 0; --i) {
-        std::promise<StorageView> promise;
-        outputs.push_back(promise.get_future());
+      StorageView input_normed(dtype, device);
+      const StorageView* p_queries = &input;
+      (*_self_attention[0]).norm_input(input, input_normed);
+      if (!input_normed.empty())
+        p_queries = &input_normed;
+
+      std::vector<std::promise<StorageView>> promises(gpu_count);
+      for (int i = 0; i < gpu_count;) {
+ 	      int index = i;
+        outputs.push_back(promises[index].get_future());
         StorageView hidden(dtype, device);
         StorageView attn(dtype, device);
-
-        StorageView cloned_input;
-        StorageView cloned_input_length;
-        StorageView cloned_memory;
-        StorageView cloned_memory_lengths;
-        StorageView cloned_position_bias;
-        Padder* cloned_input_padder;
-
+        StorageView output_async(dtype, device);
         std::async(std::launch::async, [&]() {
-          {
             const std::lock_guard<std::mutex> lock(_mutex);
-            ScopedDeviceSetter scoped_device_setter(Device::CUDA, i);
-            cloned_input = input.to(device);
-            cloned_input_length = input_length->to(device);
-            cloned_memory = memory->to(device);
-            cloned_memory_lengths = memory_lengths->to(device);
-            cloned_position_bias = position_bias->to(device);
-            cloned_input_padder = input_padder->clone(device, i);
-          }
-          (*_self_attention[i])(cloned_input,
-                          cloned_input,
-                          &cloned_input_length,
-                          output,
-                          cached_self_attn_keys[gpu_count - i - 1],
-                          cached_self_attn_values[gpu_count - i - 1],
-                          nullptr,
-                          cloned_input_padder,
-                          cloned_input_padder,
-                          true,
-                          &cloned_position_bias,
-                          offset);
-          promise.set_value(std::move(output));
-          delete cloned_input_padder;
-        });
+            ScopedDeviceSetter scoped_device_setter(device, index);
+	          auto cloned_input = p_queries->to(device);
+            StorageView* cloned_input_length = nullptr;
+            StorageView input_length_used;
+            StorageView cloned_position_bias;
+            Padder* cloned_input_padder = nullptr;
 
-        std::vector<StorageView> output_future;
-        std::vector<const StorageView *> output_final;
-        for (auto& future : outputs) {
-          auto future_output = future.get();
-          ScopedDeviceSetter scoped_device_setter(device, 0);
-          future_output = future_output.to(device);
-          output_future.emplace_back((std::move(future_output)));
-        }
-        for (auto& out : output_future) {
-          output_final.emplace_back(&out);
-        }
-        ops::Concat(-1)(output_final, output);
+            if (input_length) {
+              input_length_used = input_length->to(device);
+              cloned_input_length = &input_length_used;
+            }
+            if (position_bias)
+              cloned_position_bias = position_bias->to(device);
+            if (input_padder)
+              cloned_input_padder = input_padder->clone(device, index);
+            StorageView output_part(dtype, device);
+            //std::cout << "run attention: " << index << std::endl;
+            (*_self_attention[index])(cloned_input,
+                                      cloned_input,
+                                      cloned_input_length,
+                                      output_part,
+                                      cached_self_attn_keys[gpu_count - index - 1],
+                                      cached_self_attn_values[gpu_count - index - 1],
+                                      nullptr,
+                                      cloned_input_padder,
+                                      cloned_input_padder,
+                                      true,
+                                      &cloned_position_bias,
+                                      offset);
+            delete cloned_input_padder;
+            //promises[index].set_value(std::move(output));
+            if (cloned_input_length)
+              cloned_input_length->release();
+            cloned_position_bias.release();
+            cloned_input.release();
+            ScopedDeviceSetter scoped_device_setter_later(device, 0);
+            output_async = std::move(output_part.to(device));
+            promises[index].set_value(std::move(output_async));
+        });
+	      ++i;
       }
+      std::vector<StorageView> output_future;
+
+      for (auto& future : outputs) {
+        auto future_output = future.get();
+        //const std::lock_guard<std::mutex> lock(_mutex);
+        //ScopedDeviceSetter scoped_device_setter(device, 0);
+        //future_output =
+        StorageView tmp;
+        tmp.move_from(std::move(future_output));
+        output_future.emplace_back(std::move(tmp));
+      }
+
+      //for (auto o :output_future)
+      //{
+      //  std::cout << "output: " << o << std::endl;
+      //}
+      ops::Add()(output_future, output);
+      //std::cout << "context: " << output << std::endl;
+
+      (*_self_attention[0]).norm_output(input, output);
+
+      outputs.clear();
+      output_future.clear();
 
       StorageView context(dtype, device);
       if (_encoder_attention) {
@@ -278,51 +306,47 @@ namespace ctranslate2 {
           Padder* cloned_memory_padder;
 
           std::async(std::launch::async, [&]() {
-            {
-              const std::lock_guard<std::mutex> lock(_mutex);
-              ScopedDeviceSetter scoped_device_setter(Device::CUDA, i);
-              cloned_input = output.to(device);
-              cloned_input_length = input_length->to(device);
-              cloned_memory = memory->to(device);
-              cloned_memory_lengths = memory_lengths->to(device);
-              cloned_position_bias = position_bias->to(device);
-              cloned_input_padder = input_padder->clone(device, i);
-              cloned_memory_padder = memory_padder->clone(device, i);
-            }
+              {
+                const std::lock_guard<std::mutex> lock(_mutex);
+                ScopedDeviceSetter scoped_device_setter(Device::CUDA, i);
+                cloned_input = output.to(device);
+                cloned_input_length = input_length->to(device);
+                cloned_memory = memory->to(device);
+                cloned_memory_lengths = memory_lengths->to(device);
+                cloned_position_bias = position_bias->to(device);
+                cloned_input_padder = input_padder->clone(device, i);
+                cloned_memory_padder = memory_padder->clone(device, i);
+              }
 
-            (*_encoder_attention)(cloned_input,
-                                  cloned_memory,
-                                  &cloned_memory_lengths,
-                                  output,
-                                  cached_attn_keys, // todo fix this
-                                  cached_attn_values,
-                                  &cloned_attention,
-                                  cloned_input_padder,
-                                  cloned_memory_padder,
-                                  return_normalized_attention);
-            promise.set_value(std::move(output));
-            delete cloned_input_padder;
-            delete cloned_memory_padder;
+              (*_encoder_attention)(cloned_input,
+                                    cloned_memory,
+                                    &cloned_memory_lengths,
+                                    output,
+                                    cached_attn_keys, // todo fix this
+                                    cached_attn_values,
+                                    &cloned_attention,
+                                    cloned_input_padder,
+                                    cloned_memory_padder,
+                                    return_normalized_attention);
+              promise.set_value(std::move(output));
+              delete cloned_input_padder;
+              delete cloned_memory_padder;
           });
-
-          std::vector<StorageView> output_future;
-          std::vector<const StorageView *> output_final;
-          for (auto& future : outputs) {
-            auto future_output = future.get();
-            ScopedDeviceSetter scoped_device_setter(device, 0);
-            future_output = future_output.to(device);
-            output_future.emplace_back((std::move(future_output)));
-          }
-          for (auto& out : output_future) {
-            output_final.emplace_back(&out);
-          }
-          ops::Concat(-1)(output_final, context);
         }
+
+        for (auto& future : outputs) {
+          auto future_output = future.get();
+          ScopedDeviceSetter scoped_device_setter(device, 0);
+          future_output = future_output.to(device);
+          output_future.emplace_back((std::move(future_output)));
+        }
+        ops::Add()(output_future, context);
       } else {
         context = std::move(output);
       }
 
       _ff(context, output);
+      //std::cout << "output: " << output << std::endl;
     }
 
 
@@ -482,6 +506,7 @@ namespace ctranslate2 {
         const DataType dtype = get_default_float_type(_compute_type);
         _outputs_scale = std::make_unique<StorageView>(outputs_scale->to(dtype));
       }
+      _model = &model;
     }
 
     DecoderState TransformerDecoder::initial_state(bool iterative_decoding) const {
@@ -493,13 +518,17 @@ namespace ctranslate2 {
 
         const DataType dtype = output_type();
 
-        for (size_t i = 0; i < _layers.size(); ++i) {
-          const std::string i_str = std::to_string(i);
-          state.emplace("self_keys_" + i_str, StorageView(dtype, _device));
-          state.emplace("self_values_" + i_str, StorageView(dtype, _device));
-          if (_with_encoder_attention) {
-            state.emplace("memory_keys_" + i_str, StorageView(dtype, _device));
-            state.emplace("memory_values_" + i_str, StorageView(dtype, _device));
+        for (int index = get_gpu_count() - 1; index >= 0; --index) {
+          const ScopedDeviceSetter scoped_device_setter(_device, index);
+          const std::string index_str = std::to_string(index);
+          for (size_t i = 0; i < _layers.size(); ++i) {
+              const std::string i_str = std::to_string(i);
+              state.emplace("partition_" + index_str + "_self_keys_" + i_str, StorageView(dtype, _device));
+              state.emplace("partition_" + index_str + "_self_values_" + i_str, StorageView(dtype, _device));
+              if (_with_encoder_attention && index == get_gpu_count() - 1) {
+                  state.emplace("memory_keys_" + i_str, StorageView(dtype, _device));
+                  state.emplace("memory_values_" + i_str, StorageView(dtype, _device));
+              }
           }
         }
       }
@@ -584,6 +613,7 @@ namespace ctranslate2 {
       StorageView layer_out(dtype, device);
 
       _embeddings(ids, layer_in);
+
       if (_start_from_zero_embedding)
         zero_first_timestep(layer_in, step);
       if (_embeddings_scale && (!_start_from_zero_embedding || step != 0))
@@ -628,7 +658,7 @@ namespace ctranslate2 {
 
         StorageView lengths_mask = layers::MultiHeadAttention::prepare_length_mask(
           *lengths,
-          _num_heads,
+          _num_heads / get_gpu_count(),
           max_time,
           /*mask_future=*/true,
           multi_query);
@@ -697,8 +727,9 @@ namespace ctranslate2 {
           StorageView* cached_attn_values = nullptr;
 
           if (device == Device::CUDA) {
-            for (int w = 0; i < get_gpu_count(); ++i) {
+            for (int w = 0; w < get_gpu_count(); ++w) {
               if (step >= 0) {
+                ScopedDeviceSetter scoped_device_setter(device, w);
                 const std::string l_str = std::to_string(l);
                 const std::string index = std::to_string(w);
                 cached_self_attn_keys.push_back(&state.at("partition_" + index + "_self_keys_" + l_str));

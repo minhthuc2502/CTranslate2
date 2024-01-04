@@ -1,6 +1,7 @@
 #include "ctranslate2/models/language_model.h"
 
 #include "ctranslate2/decoding.h"
+#include <iostream>
 
 namespace ctranslate2 {
   namespace models {
@@ -56,7 +57,7 @@ namespace ctranslate2 {
     SequenceGeneratorReplica::generate(const std::vector<std::vector<std::string>>& start_tokens,
                                        const GenerationOptions& options) {
       PROFILE("SequenceGeneratorReplica::generate");
-      const auto scoped_device_setter = model()->get_scoped_device_setter();
+      //const auto scoped_device_setter = model()->get_scoped_device_setter();
 
       if (start_tokens.empty())
         return {};
@@ -148,6 +149,8 @@ namespace ctranslate2 {
     std::vector<GenerationResult>
     DecoderReplica::run_generation(const std::vector<std::vector<std::string>>& start_tokens,
                                    const GenerationOptions& options) {
+      ScopedDeviceSetter scoped_device_setter1(Device::CUDA, 0);
+
       const auto& vocabulary = _model->get_vocabulary();
       _decoder->update_output_layer(_model->preferred_size_multiple());
 

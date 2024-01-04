@@ -167,6 +167,7 @@ namespace ctranslate2 {
     // Assignment operators.
     StorageView& operator=(const StorageView& other);
     StorageView& operator=(StorageView&& other) noexcept;
+    StorageView& move_from(StorageView&& other) noexcept;
 
     StorageView& shallow_copy(StorageView& other);
     StorageView sync_copy() const;

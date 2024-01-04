@@ -8,9 +8,9 @@
 #include <csignal>
 #include <list>
 
-#include "boost/program_options.hpp"
+//#include "boost/program_options.hpp"
 
-namespace po = boost::program_options;
+//namespace po = boost::program_options;
 
 enum class Role {
   SYSTEM,
@@ -43,9 +43,11 @@ std::vector<std::string> build_prompt(sentencepiece::SentencePieceProcessor& sp,
   for (; it != dialogs.end(); ++it) {
     if (it->role == Role::USER) {
       input_tokens.emplace_back("<s>");
+      std::cout << "content: " << it->content << std::endl;
       auto user_tokens = sp.EncodeAsPieces(B_INST + " " + it->content + " " + E_INST);
       //auto user_tokens = sp.EncodeAsPieces(it->content);
       input_tokens.insert(input_tokens.end(), user_tokens.begin(), user_tokens.end());
+      std::cout << "input_tokens: " << input_tokens.size() << std::endl;
     }
     else if (it->role == Role::ASSISTANT) {
       auto user_tokens = sp.EncodeAsPieces(it->content);
@@ -57,14 +59,15 @@ std::vector<std::string> build_prompt(sentencepiece::SentencePieceProcessor& sp,
 }
 
 int main(int argc, char** argv) {
-  po::options_description cmdLineOptions("CTranslate2 Llama Options");
-  po::variables_map vm;
+  //po::options_description cmdLineOptions("CTranslate2 Llama Options");
+  //po::variables_map vm;
   std::string model_path;
   std::string input_path;
   std::string system_prompt;
-  int context_length;
-  int generation_length;
+  int context_length = 10000;
+  int generation_length = 512;
 
+  /*
   try
   {
     cmdLineOptions.add_options()
@@ -91,13 +94,14 @@ int main(int argc, char** argv) {
   catch (std::exception& e) {
     std::cerr << "Exception: " << e.what() << std::endl;
     return 1;
-  }
+  }*/
+  model_path="/nfs/SSALING-DATA/pham/tinyllama";
 
   size_t max_prompt_length = context_length - generation_length;
   signal(SIGINT, signalHandler);
   std::cout << "Loading the model ..." << std::endl;
 
-  ctranslate2::Generator generator(model_path, ctranslate2::Device::CPU);
+  ctranslate2::Generator generator(model_path, ctranslate2::Device::CUDA);
   sentencepiece::SentencePieceProcessor sp_process;
   std::vector<std::string> token_buffer;
   ctranslate2::GenerationOptions generator_options;
@@ -134,11 +138,11 @@ int main(int argc, char** argv) {
     dialogs.emplace_back(dialog);
   }
 
-  try {
+//  try {
     while(true) {
       std::cout << "You: ";
-      std::string user_request;
-      std::getline(std::cin, user_request);
+      std::string user_request = "what is a transformer model";
+      //std::getline(std::cin, user_request);
 /*
     std::ostringstream user_request;
     std::ifstream inputFile(input_path);
@@ -175,6 +179,7 @@ int main(int argc, char** argv) {
         }
       }
       std::cout << "number token: " << input_tokens.size() << std::endl;
+
       auto results = generator.generate_batch_async({input_tokens}, generator_options);
 
       std::cout << "llama2: " << std::flush;
@@ -196,8 +201,8 @@ int main(int argc, char** argv) {
       generation_output.clear();
       std::cout << std::endl;
     }
-  }
-  catch (std::exception& e) {
-    std::cout << e.what() << std::endl;
-  }
+//  }
+//  catch (std::exception& e) {
+//    std::cout << e.what() << std::endl;
+//  }
 }

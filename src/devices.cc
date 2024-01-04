@@ -109,7 +109,11 @@ namespace ctranslate2 {
   void synchronize_stream(Device device) {
 #ifdef CT2_WITH_CUDA
     if (device == Device::CUDA) {
-      cudaStreamSynchronize(cuda::get_cuda_stream());
+      for (int i = 0; i < get_gpu_count(); ++i)
+      {
+        const ScopedDeviceSetter scoped_device_setter(device, i);
+        cudaStreamSynchronize(cuda::get_cuda_stream());
+      }
     }
 #else
     (void)device;

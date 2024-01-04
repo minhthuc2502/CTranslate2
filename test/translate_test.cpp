@@ -8,9 +8,9 @@
 #include <csignal>
 #include <list>
 
-#include "boost/program_options.hpp"
+//#include "boost/program_options.hpp"
 
-namespace po = boost::program_options;
+//namespace po = boost::program_options;
 
 int main(int argc, char** argv) {
   ctranslate2::Translator translator("/home/pham/workplace/systran/openNMT/CTranslate2/test/models/enfr_model", ctranslate2::Device::CPU);

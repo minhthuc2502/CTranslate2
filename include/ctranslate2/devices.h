@@ -29,8 +29,8 @@ namespace ctranslate2 {
       , _prev_index(get_device_index(device))
       , _new_index(index)
     {
-      if (_prev_index != _new_index)
-        set_device_index(device, _new_index);
+      //if (_prev_index != _new_index)
+      set_device_index(device, _new_index);
     }
 
     ~ScopedDeviceSetter() {

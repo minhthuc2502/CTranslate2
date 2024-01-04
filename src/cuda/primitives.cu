@@ -49,7 +49,12 @@ namespace ctranslate2 {
                                  cudaMemcpyDeviceToDevice, cuda::get_cuda_stream()));
     }
     else {
-      CUDA_CHECK(cudaMemcpyPeerAsync(y, device_y, x, device_x, size * sizeof (T), cuda::get_cuda_stream()));
+      //std::cout << device_y << " " << device_x << std::endl;
+      //std::cout << x << std::endl;
+      //std::cout << size * sizeof(T) << std::endl;
+      cudaError_t error = cudaMemcpyPeerAsync(y, device_y, x, device_x, size * sizeof (T), cuda::get_cuda_stream());
+      //std::cout << int(error) << std::endl;
+
     }
   }
 
@@ -705,13 +710,13 @@ namespace ctranslate2 {
 
   template<>
   template <typename T>
-  void cross_device_primitives<Device::CPU, Device::CUDA>::copy(const T* x, T* y, dim_t size) {
+  void cross_device_primitives<Device::CPU, Device::CUDA>::copy(const T* x, T* y, dim_t size, int device_index) {
     CUDA_CHECK(cudaMemcpyAsync(y, x, size * sizeof (T), cudaMemcpyHostToDevice, cuda::get_cuda_stream()));
   }
 
   template<>
   template <typename T>
-  void cross_device_primitives<Device::CUDA, Device::CPU>::copy(const T* x, T* y, dim_t size) {
+  void cross_device_primitives<Device::CUDA, Device::CPU>::copy(const T* x, T* y, dim_t size, int device_index) {
     CUDA_CHECK(cudaMemcpyAsync(y, x, size * sizeof (T), cudaMemcpyDeviceToHost, cuda::get_cuda_stream()));
   }
 
@@ -782,9 +787,9 @@ namespace ctranslate2 {
                                          const dim_t* perm,             \
                                          T* b);                         \
   template void                                                         \
-  cross_device_primitives<Device::CPU, Device::CUDA>::copy<T>(const T*, T*, dim_t); \
+  cross_device_primitives<Device::CPU, Device::CUDA>::copy<T>(const T*, T*, dim_t, int); \
   template void                                                         \
-  cross_device_primitives<Device::CUDA, Device::CPU>::copy<T>(const T*, T*, dim_t);
+  cross_device_primitives<Device::CUDA, Device::CPU>::copy<T>(const T*, T*, dim_t, int);
 
   DECLARE_ALL_TYPES(DECLARE_IMPL)
 

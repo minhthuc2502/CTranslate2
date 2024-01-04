@@ -78,7 +78,7 @@ namespace ctranslate2 {
 
       virtual StorageView forward(const StorageView& ids, const StorageView& lengths) = 0;
 
-    private:
+    public:
       const std::shared_ptr<const LanguageModel> _model;
     };
 

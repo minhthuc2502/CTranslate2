@@ -213,6 +213,8 @@ namespace ctranslate2 {
       bool _average_alignment_heads;
       Dense _proj;
       const dim_t _sliding_window;
+      const models::Model *_model;
+
     };
 
   }

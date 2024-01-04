@@ -155,17 +155,23 @@ namespace ctranslate2 {
   }
 
   template<>
-  Allocator& get_allocator<Device::CUDA>() {
+  Allocator& get_allocator<Device::CUDA>(int device_index) {
     static const cuda::CudaAllocator cuda_allocator = cuda::resolve_cuda_allocator();
 
     if (cuda_allocator == cuda::CudaAllocator::CubCaching) {
       // Use 1 allocator per thread for performance.
-      static thread_local cuda::CubCachingAllocator allocator;
-      return allocator;
+      static thread_local std::map<int, cuda::CubCachingAllocator> allocator;
+      if (allocator.find(device_index) == allocator.end()) {
+        allocator[device_index] = cuda::CubCachingAllocator();
+      }
+      return allocator[device_index];
     }
 
-    static cuda::CudaAsyncAllocator allocator;
-    return allocator;
+    static thread_local std::map<int, cuda::CudaAsyncAllocator> allocator;
+    if (allocator.find(device_index) == allocator.end()) {
+      allocator[device_index] = cuda::CudaAsyncAllocator();
+    }
+    return allocator[device_index];
   }
 
 }
