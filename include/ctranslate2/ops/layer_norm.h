@@ -38,5 +38,24 @@ namespace ctranslate2 {
       const float _epsilon;
     };
 
+    class LayerNormWMask : public UnaryOp {
+    public:
+      LayerNormWMask(const float epsilon = 1e-12);
+
+      using UnaryOp::operator();
+      void operator()(const StorageView& input, StorageView& output) const;
+
+    private:
+      template <Device D, typename T>
+      void compute(const StorageView& input,
+                   const dim_t axis,
+                   const dim_t outer_size,
+                   const dim_t axis_size,
+                   const dim_t inner_size,
+                   StorageView& output) const;
+
+      const float _epsilon;
+    };
+
   }
 }

@@ -344,6 +344,10 @@ namespace ctranslate2 {
       , _pooler_dense(layers::build_optional_layer<layers::Dense>(*model,
                                                                   "pooler_dense",
                                                                   &_pooler_activation))
+      , _wise_attention(layers::build_optional_layer<layers::WiseAttentionLayer>(*model,
+                                                                  "wise_attention"))
+      , _estimator_ffn(layers::build_optional_layer<layers::EstimatorFeedForward>(*model,
+                                                                                 "estimator_ffn"))
     {
     }
 
@@ -395,6 +399,19 @@ namespace ctranslate2 {
         (*_pooler_dense)(first_token_state, pooler_output);
 
         output.pooler_output = std::move(pooler_output);
+      }
+      if (_wise_attention) {
+        StorageView wise_attention_output(dtype, device);
+        (*_wise_attention)(output.pooler_output.value(), wise_attention_output);
+        output.wise_attn_output = std::move(wise_attention_output);
+      }
+      if (_estimator_ffn) {
+        StorageView ffn_output(dtype, device);
+        if (_wise_attention)
+          (*_estimator_ffn)(output.wise_attn_output.value(), ffn_output);
+        else
+          (*_estimator_ffn)(output.pooler_output.value(), ffn_output);
+        output.estimator_ffn_output = std::move(ffn_output);
       }
 
       return output;

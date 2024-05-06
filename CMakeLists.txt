@@ -121,6 +121,7 @@ set(SOURCES
   src/layers/transformer.cc
   src/layers/wav2vec2.cc
   src/layers/whisper.cc
+  src/layers/encoder_classification.cc
   src/logging.cc
   src/models/language_model.cc
   src/models/model.cc
@@ -153,6 +154,8 @@ set(SOURCES
   src/ops/gumbel_max_cpu.cc
   src/ops/layer_norm.cc
   src/ops/layer_norm_cpu.cc
+  src/ops/layer_norm_with_mask.cc
+  src/ops/layer_norm_with_mask_cpu.cc
   src/ops/log.cc
   src/ops/matmul.cc
   src/ops/mean.cc
@@ -549,6 +552,7 @@ if (WITH_CUDA)
     src/ops/gather_gpu.cu
     src/ops/gumbel_max_gpu.cu
     src/ops/layer_norm_gpu.cu
+    src/ops/layer_norm_with_mask_gpu.cu
     src/ops/mean_gpu.cu
     src/ops/multinomial_gpu.cu
     src/ops/rms_norm_gpu.cu

@@ -7,6 +7,7 @@ import os
 from typing import List, Optional
 
 import numpy as np
+import numpy as nn
 
 try:
     import huggingface_hub
@@ -2066,7 +2067,8 @@ class BertLoader(ModelLoader):
 class XLMRobertaLoader(ModelLoader):
     @property
     def architecture_name(self):
-        return "XLMRobertaForSequenceClassification"
+        return "XLMRobertaForEstimation"
+#        return "XLMRobertaForSequenceClassification"
 
     def get_model_spec(self, model):
         assert model.config.position_embedding_type == "absolute"
@@ -2086,10 +2088,30 @@ class XLMRobertaLoader(ModelLoader):
         else:
             pooling_layer = True
 
+        if model.layerwise_attention is None:
+            layer_wise_attn = False
+            layer_wise_norm = False
+            layer_wise_num_layers = 0
+        else:
+            layer_wise_attn = True
+            layer_wise_norm = model.layerwise_attention.layer_norm
+            layer_wise_num_layers = model.layerwise_attention.num_layers
+
+        if model.estimator is None:
+            estimator_ffn = False
+        else:
+            estimator_ffn = True
+
         spec = transformer_spec.TransformerEncoderModelSpec(
             encoder_spec,
             pooling_layer=pooling_layer,
             pooling_activation=common_spec.Activation.Tanh,
+            layer_wise_attn=layer_wise_attn,
+            layer_wise_norm=layer_wise_norm,
+            layer_wise_num_layers=layer_wise_num_layers,
+            estimator_ffn=estimator_ffn,
+            estimator_ffn_activation=common_spec.Activation.Tanh,
+            estimator_sizes=(0 if model.config.estimator_sizes is None else model.config.estimator_sizes)
         )
 
         spec.encoder.scale_embeddings = False
@@ -2127,6 +2149,17 @@ class XLMRobertaLoader(ModelLoader):
             self.set_linear(layer_spec.ffn.linear_0, layer.intermediate.dense)
             self.set_linear(layer_spec.ffn.linear_1, layer.output.dense)
             self.set_layer_norm(layer_spec.ffn.layer_norm, layer.output.LayerNorm)
+
+        if layer_wise_attn:
+            spec.wise_attention.gam = model.layerwise_attention.gam
+            spec.wise_attention.scalar_parameters = torch.cat([parameter for parameter in
+                                                               model.layerwise_attention.scalar_parameters])
+
+        if estimator_ffn:
+            linear_layers = [layer for layer in model.estimator.ff if isinstance(layer, nn.Linear)]
+            for layer_spec, layer in zip(spec.estimator_ffn.linear_layers, linear_layers[:-1]):
+                self.set_linear(layer_spec, layer)
+            spec.estimator_ffn.linear_out = linear_layers[-1]
 
         return spec
 

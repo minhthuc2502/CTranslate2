@@ -2,6 +2,7 @@
 
 #include "ctranslate2/layers/encoder.h"
 #include "ctranslate2/layers/decoder.h"
+#include "ctranslate2/layers/encoder_classification.h"
 #include "ctranslate2/models/model.h"
 #include "ctranslate2/encoding.h"
 #include "ctranslate2/generation.h"
@@ -159,6 +160,8 @@ namespace ctranslate2 {
       const std::unique_ptr<layers::Encoder> _encoder;
       const ops::ActivationType _pooler_activation;
       const std::unique_ptr<layers::Dense> _pooler_dense;
+      const std::unique_ptr<layers::WiseAttentionLayer> _wise_attention;
+      const std::unique_ptr<layers::EstimatorFeedForward> _estimator_ffn;
     };
 
   }

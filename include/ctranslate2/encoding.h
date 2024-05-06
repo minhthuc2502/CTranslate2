@@ -10,6 +10,8 @@ namespace ctranslate2 {
     StorageView last_hidden_state;
 
     std::optional<StorageView> pooler_output;
+    std::optional<StorageView> wise_attn_output;
+    std::optional<StorageView> estimator_ffn_output;
   };
 
 }

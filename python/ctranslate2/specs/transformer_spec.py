@@ -301,6 +301,23 @@ class FeedForwardSpec(model_spec.LayerSpec):
             self.linear_0_noact = common_spec.LinearSpec()
 
 
+class LayerwiseAttentionSpec(model_spec.LayerSpec):
+    def __init__(self, layer_norm=False, num_layers=24):
+        self.layer_norm = layer_norm
+        self.gam = None
+        self.scalar_parameters = None
+        self.num_layers = num_layers + 1
+
+
+class EstimatorFeedForward(model_spec.LayerSpec):
+    def __init__(self,
+                 activation: common_spec.Activation = common_spec.Activation.Tanh,
+                 estimator_sizes=2):
+        self.activation = np.dtype("int8").type(activation)
+        self.linear_layers = [common_spec.LinearSpec() for _ in range(estimator_sizes)]
+        self.linear_out = common_spec.LinearSpec()
+
+
 class PositionEncoderSpec(model_spec.LayerSpec):
     def __init__(self):
         self.encodings = model_spec.OPTIONAL
@@ -605,6 +622,12 @@ class TransformerEncoderModelSpec(model_spec.LanguageModelSpec):
         encoder: TransformerEncoderSpec,
         pooling_layer: bool = False,
         pooling_activation: common_spec.Activation = common_spec.Activation.Tanh,
+        layer_wise_attn: bool = False,
+        layer_wise_norm: bool = False,
+        layer_wise_num_layers: int = 24,
+        estimator_ffn: bool = False,
+        estimator_ffn_activation: common_spec.Activation = common_spec.Activation.Tanh,
+        estimator_sizes: int = 2
     ):
         """Initializes a Transformer encoder model specification.
 
@@ -625,6 +648,11 @@ class TransformerEncoderModelSpec(model_spec.LanguageModelSpec):
         if pooling_layer:
             self.pooler_dense = common_spec.LinearSpec()
             self.pooler_activation = np.dtype("int8").type(pooling_activation)
+
+        if layer_wise_attn:
+            self.wise_attention = LayerwiseAttentionSpec(layer_wise_norm, layer_wise_num_layers)
+        if estimator_ffn:
+            self.estimator_ffn = EstimatorFeedForward(estimator_ffn_activation, estimator_sizes)
 
     @property
     def name(self):
