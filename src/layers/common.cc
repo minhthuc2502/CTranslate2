@@ -5,6 +5,7 @@
 #include "ctranslate2/ops/activation.h"
 #include "cpu/backend.h"
 #include "dispatch.h"
+#include <iostream>
 
 namespace ctranslate2 {
   namespace layers {
@@ -50,6 +51,7 @@ namespace ctranslate2 {
       : _embeddings(model.get_variable(scope + "/weight"))
       , _output_type(get_default_float_type(model.effective_compute_type()))
       , _qscale(model.get_variable_if_exists(scope + "/weight_scale"))
+      , _qzero(model.get_variable_if_exists(scope + "/weight_zero"))
     {
     }
 
@@ -64,12 +66,23 @@ namespace ctranslate2 {
     void Embeddings::operator()(const StorageView& ids,
                                 StorageView& output) const {
       PROFILE("Embeddings");
-      if (_embeddings.dtype() == DataType::INT16 || _embeddings.dtype() == DataType::INT8) {
+      if (_embeddings.dtype() == DataType::INT16 || _embeddings.dtype() == DataType::INT8 || _embeddings.dtype() == DataType::UINT8) {
         const auto device = output.device();
         StorageView gathered(_embeddings.dtype(), device);
         _gather_op(_embeddings, ids, gathered);
         if (_qscale->is_scalar())
           ops::Dequantize()(gathered, *_qscale, output);
+        else if(_qzero) {
+          StorageView scale(_qscale->dtype(), device);
+          StorageView zero(_qzero->dtype(), device);
+          _gather_op(*_qscale, ids, scale);
+          _gather_op(*_qzero, ids, zero);
+          //std::cout << "qscale: " << scale << std::endl;
+          //std::cout << "zero: " << zero << std::endl;
+          //std::cout << "gathered: " << gathered << std::endl;
+          ops::Dequantize()(gathered, scale, zero, output);
+          //std::cout << "gather dequant: " << output << std::endl;
+        }
         else {
           StorageView scale(_qscale->dtype(), device);
           _gather_op(*_qscale, ids, scale);
@@ -271,6 +284,7 @@ namespace ctranslate2 {
       , _weight(get_linear_weight(model, scope, &_packed_weight))
       , _bias(model.get_variable_if_exists(scope + "/bias"))
       , _qscale(model.get_variable_if_exists(scope + "/weight_scale"))
+      , _qzero(model.get_variable_if_exists(scope + "/weight_zero"))
       , _u8_shift_compensation((_weight.device() == Device::CPU
                                 && _weight.dtype() == DataType::INT8
                                 && cpu::prefer_u8s8s32_gemm())
@@ -345,7 +359,7 @@ namespace ctranslate2 {
       bool affected_by_tp = ScopedMPISetter::getNRanks() > 1 && _is_layer_out;
       if (affected_by_tp && ScopedMPISetter::getCurRank() != 0)
         bias = nullptr;
-      if (_quantized_gemm) {
+      if (_quantized_gemm && input.dim(-1) == weight->dim(-1)) {
         const auto device = input.device();
         StorageView qinput(_weight.dtype(), device);
         StorageView qinput_scale(_qscale->dtype(), device);
@@ -392,6 +406,12 @@ namespace ctranslate2 {
                        /*trans_b=*/true,
                        output,
                        bias);
+      } else if (input.dim(-1) != weight->dim(-1)) {
+        //std::cout << "weighttttttttttttt: " << *weight << std::endl;
+        StorageView weight_dequant(input.dtype(), input.device());
+        _dequantize_op(*weight, *qscale, *_qzero, weight_dequant);
+        //std::cout << "weighttttttttttttt dequant: " << weight_dequant << std::endl;
+        _gemm_op(input, weight_dequant, output, nullptr, bias);
       } else {
         _gemm_op(input, *weight, output, nullptr, bias);
       }

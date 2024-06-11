@@ -177,6 +177,7 @@ namespace ctranslate2 {
       std::unordered_map<std::string, std::shared_ptr<StorageView>> _variable_index;
       bool _use_flash_attention = false;
       bool _tensor_parallel = false;
+      DataType _quantization_type;
     };
 
     template<>

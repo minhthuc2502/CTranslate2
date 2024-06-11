@@ -3,7 +3,8 @@
 set -e
 set -x
 
-# Install test rquirements
+# Install test requirements
+pip cache purge
 pip --no-cache-dir install -r python/tests/requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu
 pip uninstall -y ctranslate2
 

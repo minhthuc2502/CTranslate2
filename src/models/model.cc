@@ -6,6 +6,7 @@
 #include "ctranslate2/ops/ops.h"
 #include "ctranslate2/utils.h"
 #include <regex>
+#include <iostream>
 
 #ifdef CT2_WITH_CUDA
 #  include "cuda/utils.h"
@@ -190,6 +191,9 @@ namespace ctranslate2 {
       DataType weight_dtype = DataType::FLOAT32;
       DataType float_dtype = DataType::FLOAT32;
       std::tie(weight_dtype, float_dtype) = compute_type_to_data_type(_effective_compute_type);
+      // TODO handle compute type
+      weight_dtype = DataType::UINT8;
+      float_dtype = DataType::FLOAT32;
       if (_use_flash_attention && (float_dtype != DataType::FLOAT16 && float_dtype != DataType::BFLOAT16))
         throw std::runtime_error("FlashAttention only support fp16 and bf16 data type");
 
@@ -741,6 +745,8 @@ namespace ctranslate2 {
           }
         }
 
+        std::cout << "name: " << name << std::endl;
+        std::cout << "variable: " << variable << std::endl;
         model->register_variable(std::move(name), std::move(variable));
       }
 
@@ -759,6 +765,7 @@ namespace ctranslate2 {
           model->register_variable_alias(alias, variable_name);
           // Also alias the quantization scale that could be associated to variable_name.
           model->register_variable_alias(alias + "_scale", variable_name + "_scale");
+          model->register_variable_alias(alias + "_zero", variable_name + "_zero");
         }
       }
 
