@@ -191,6 +191,7 @@ set(SOURCES
   src/ops/transpose.cc
   src/ops/nccl_ops.cc
   src/ops/nccl_ops_cpu.cc
+  src/ops/int4gemm_cpu.cc
   src/padder.cc
   src/profiler.cc
   src/random.cc
@@ -563,6 +564,7 @@ if (WITH_CUDA)
     src/ops/topp_mask_gpu.cu
     src/ops/quantize_gpu.cu
     src/ops/nccl_ops_gpu.cu
+    src/ops/int4gemm_gpu.cu
     src/ops/flash-attention/flash_fwd_hdim32_bf16_sm80.cu
     src/ops/flash-attention/flash_fwd_hdim32_fp16_sm80.cu
     src/ops/flash-attention/flash_fwd_hdim64_bf16_sm80.cu
