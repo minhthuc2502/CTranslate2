@@ -473,38 +473,6 @@ namespace ctranslate2 {
 
         auto hypotheses = target_vocabulary.to_tokens(result.hypotheses);
 
-        /*
-        if (!result.attention.empty()) {
-          const auto& source_original = source_features[0][i];
-          const auto& source_input = source_ids[0][i];
-
-          for (size_t h = 0; h < result.attention.size(); ++h) {
-            auto& attention = result.attention[h];
-
-            for (auto& vector : attention) {
-              // Remove attenton positions for padding and implicit special tokens.
-              vector.resize(source_input.size());
-              if (_model->with_source_bos())
-                vector.erase(vector.begin());
-              if (_model->with_source_eos())
-                vector.pop_back();
-
-              // Resize to the original input size.
-              vector.resize(source_original.size(), 0);
-            }
-
-            if (options.replace_unknowns)
-              replace_unknown_tokens(source_original,
-                                     hypotheses[h],
-                                     attention,
-                                     target_vocabulary.unk_token());
-          }
-
-          if (!options.return_attention)
-            result.attention.clear();
-        }*/
-
-
         WhisperNmtGenerationResult final_result;
         final_result.sequences = std::move(hypotheses);
         //final_result.sequences_ids = std::move(result.hypotheses);
