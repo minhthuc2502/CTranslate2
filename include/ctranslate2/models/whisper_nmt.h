@@ -214,7 +214,6 @@ namespace ctranslate2 {
                   StorageView& memory_lengths);
       const std::shared_ptr<const WhisperNmtModel> _model;
       const std::unique_ptr<layers::WhisperEncoder> _encoder;
-      //const std::unique_ptr<layers::WhisperDecoder> _decoder;
       const std::unique_ptr<layers::TransformerEncoder> _transformer_encoder;
       const std::unique_ptr<layers::TransformerDecoder> _transformer_decoder;
       const std::unique_ptr<layers::WhisperConnector> _connector;

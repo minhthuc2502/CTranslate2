@@ -393,8 +393,8 @@ namespace ctranslate2 {
       StorageView input_concat(output.dtype(), output.device());
       ops::Concat(1)({&lang_input, &input, &eos_input}, input_concat);
 
-      StorageView hidden = input;
-      const dim_t max_time = input.dim(1);
+      StorageView hidden = input_concat;
+      const dim_t max_time = input_concat.dim(1);
 
       // Remove padding to reduce the amount of computation.
       std::unique_ptr<Padder> padder;

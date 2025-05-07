@@ -329,8 +329,8 @@ namespace ctranslate2 {
       std::vector<StorageView> eos_feature_ids;
       eos_feature_ids.reserve(num_eosid_features);
 
-      for (size_t i = 0; i < num_langid_features; ++i) {
-        const auto& tokens_ids = language_ids[i];
+      for (size_t i = 0; i < num_eosid_features; ++i) {
+        const auto& tokens_ids = eos_ids[i];
         eos_feature_ids.emplace_back(layers::make_sequence_inputs(tokens_ids,
                                                            _model->device(),
                                                            _model->preferred_size_multiple(),
